@@ -792,8 +792,10 @@
       "ReviewWorkflow state transitions are explicit and restricted to draft->in-review, in-review->revision-required|approved, revision-required->draft, approved->submitted.",
       "Workflow role policy is enforced for faculty, reviewer, and admin transitions.",
       "Workflow transition history is append-only and cannot be mutated in-place.",
+      "Workflow transition history is sequence-backed and must remain contiguous with valid from/to state chaining.",
       "Workflow evidence integration is reference-based (evidenceItemIds/evidenceCollectionId) and does not embed workflow state in EvidenceItem.",
-      "Approval/submission transitions evaluate referenced evidence completeness, activity status, and usability."
+      "ReviewWorkflow.evidenceCollectionId must resolve to a ReviewCycle.evidenceSetIds key for the owning cycle.",
+      "Approval/submission transitions evaluate referenced evidence presence, completeness, activity status, and usability through the evidence-management readiness contract."
     ],
     "crossContextReferenceRules": [
       "accreditation-frameworks validates local shape and ownership invariants for framework and cycle aggregates.",

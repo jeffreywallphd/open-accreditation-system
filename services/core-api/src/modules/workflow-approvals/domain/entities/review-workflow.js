@@ -50,9 +50,13 @@ export class WorkflowTransitionRecord {
     parseReviewWorkflowState(props.toState, 'WorkflowTransitionRecord.toState');
     parseWorkflowActorRole(props.actorRole, 'WorkflowTransitionRecord.actorRole');
     assertRequired(props.transitionedAt, 'WorkflowTransitionRecord.transitionedAt');
+    if (!Number.isInteger(props.sequence) || props.sequence < 1) {
+      throw new ValidationError('WorkflowTransitionRecord.sequence must be an integer >= 1');
+    }
 
     this.id = props.id;
     this.workflowId = props.workflowId;
+    this.sequence = props.sequence;
     this.fromState = props.fromState;
     this.toState = props.toState;
     this.actorRole = props.actorRole;
@@ -67,6 +71,7 @@ export class WorkflowTransitionRecord {
     return new WorkflowTransitionRecord({
       id: input.id ?? createId('wf_hist'),
       workflowId: input.workflowId,
+      sequence: input.sequence,
       fromState: input.fromState,
       toState: input.toState,
       actorRole: input.actorRole,
@@ -138,6 +143,7 @@ export class ReviewWorkflow {
     this.state = nextState;
     const historyEntry = WorkflowTransitionRecord.create({
       workflowId: this.id,
+      sequence: this.transitionHistory.length + 1,
       fromState: previousState,
       toState: nextState,
       actorRole,
@@ -152,6 +158,7 @@ export class ReviewWorkflow {
 
   #assertIntegrity() {
     const transitionIds = new Set();
+    let previous = null;
     for (const record of this.transitionHistory) {
       if (record.workflowId !== this.id) {
         throw new ValidationError('WorkflowTransitionRecord.workflowId must match ReviewWorkflow.id');
@@ -159,7 +166,29 @@ export class ReviewWorkflow {
       if (transitionIds.has(record.id)) {
         throw new ValidationError(`WorkflowTransitionRecord.id must be unique within workflow: ${record.id}`);
       }
+      if (record.sequence !== transitionIds.size + 1) {
+        throw new ValidationError('WorkflowTransitionRecord.sequence must be contiguous and start at 1');
+      }
+      if (!previous && record.fromState !== reviewWorkflowState.DRAFT) {
+        throw new ValidationError('WorkflowTransitionRecord history must start from draft');
+      }
+      if (previous && record.fromState !== previous.toState) {
+        throw new ValidationError('WorkflowTransitionRecord history chain is invalid');
+      }
       transitionIds.add(record.id);
+      previous = record;
+    }
+
+    if (this.transitionHistory.length === 0) {
+      if (this.state !== reviewWorkflowState.DRAFT) {
+        throw new ValidationError('ReviewWorkflow without transition history must be in draft state');
+      }
+      return;
+    }
+
+    const lastTransition = this.transitionHistory[this.transitionHistory.length - 1];
+    if (lastTransition.toState !== this.state) {
+      throw new ValidationError('ReviewWorkflow.state must match the last transition toState');
     }
   }
 

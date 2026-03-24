@@ -57,6 +57,7 @@ export async function runTests(): Promise<void> {
   });
   assert.equal(workflow.state, reviewWorkflowState.IN_REVIEW);
   assert.equal(workflow.transitionHistory.length, 1);
+  assert.equal(workflow.transitionHistory[0].sequence, 1);
 
   workflow.transitionTo(reviewWorkflowState.REVISION_REQUIRED, workflowActorRole.REVIEWER, {
     reason: 'Need stronger evidence alignment',
@@ -116,5 +117,31 @@ export async function runTests(): Promise<void> {
     },
   });
   assert.equal(workflow.state, reviewWorkflowState.SUBMITTED);
+  assert.equal(workflow.transitionHistory[workflow.transitionHistory.length - 1].sequence, 5);
+
+  assert.throws(
+    () =>
+      ReviewWorkflow.rehydrate({
+        ...workflow,
+        state: reviewWorkflowState.APPROVED,
+        transitionHistory: workflow.transitionHistory,
+      }),
+    ValidationError,
+    'workflow state must match last transition state on rehydration',
+  );
+
+  assert.throws(
+    () =>
+      ReviewWorkflow.rehydrate({
+        ...workflow,
+        state: reviewWorkflowState.SUBMITTED,
+        transitionHistory: workflow.transitionHistory.map((entry, index) => ({
+          ...entry,
+          sequence: index === 1 ? 7 : entry.sequence,
+        })),
+      }),
+    ValidationError,
+    'workflow transition sequence must be contiguous',
+  );
 }
 

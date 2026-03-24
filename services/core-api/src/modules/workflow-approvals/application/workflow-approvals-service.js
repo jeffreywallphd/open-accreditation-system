@@ -1,14 +1,14 @@
 import { NotFoundError, ValidationError } from '../../shared/kernel/errors.js';
 import { ReviewCycle } from '../domain/entities/review-cycle.js';
 import { ReviewWorkflow } from '../domain/entities/review-workflow.js';
-import { reviewCycleStatus } from '../domain/value-objects/workflow-statuses.js';
+import { reviewCycleStatus, reviewWorkflowState } from '../domain/value-objects/workflow-statuses.js';
 
 export class WorkflowApprovalsService {
   constructor(deps) {
     this.cycles = deps.cycles;
     this.workflows = deps.workflows;
     this.institutions = deps.institutions;
-    this.evidenceManagement = deps.evidenceManagement;
+    this.evidenceReadiness = deps.evidenceReadiness;
   }
 
   async createReviewCycle(input) {
@@ -53,7 +53,8 @@ export class WorkflowApprovalsService {
       institutionId: cycle.institutionId,
       reviewCycleId: cycle.id,
     });
-    await this.#assertEvidenceReferencesBelongToWorkflowInstitution(workflow);
+    this.#assertEvidenceCollectionReference(workflow, cycle);
+    await this.#assertEvidenceReferencesBelongToWorkflowInstitution(workflow, cycle);
     return this.workflows.save(workflow);
   }
 
@@ -64,7 +65,7 @@ export class WorkflowApprovalsService {
       throw new ValidationError('Workflow transitions require ReviewCycle status=active');
     }
 
-    const evidenceSummary = await this.#evaluateWorkflowEvidence(workflow);
+    const evidenceSummary = await this.#evaluateWorkflowEvidence(workflow, nextState);
     workflow.transitionTo(nextState, actorRole, {
       reason: options.reason,
       evidenceSummary,
@@ -134,69 +135,71 @@ export class WorkflowApprovalsService {
     }
   }
 
-  async #assertEvidenceReferencesBelongToWorkflowInstitution(workflow) {
-    if (!this.evidenceManagement || workflow.evidenceItemIds.length === 0) {
+  #assertEvidenceCollectionReference(workflow, cycle) {
+    if (!workflow.evidenceCollectionId) {
       return;
     }
-    for (const evidenceItemId of workflow.evidenceItemIds) {
-      const evidenceItem = await this.evidenceManagement.getEvidenceItemById(evidenceItemId);
-      if (!evidenceItem) {
-        throw new ValidationError(`Referenced evidence item not found: ${evidenceItemId}`);
-      }
-      if (evidenceItem.institutionId !== workflow.institutionId) {
-        throw new ValidationError(`Evidence item ${evidenceItemId} must belong to workflow institution`);
-      }
+    if (!cycle.evidenceSetIds.includes(workflow.evidenceCollectionId)) {
+      throw new ValidationError(
+        `ReviewWorkflow evidenceCollectionId must be declared on ReviewCycle.evidenceSetIds: ${workflow.evidenceCollectionId}`,
+      );
     }
   }
 
-  async #evaluateWorkflowEvidence(workflow) {
-    if (!this.evidenceManagement || workflow.evidenceItemIds.length === 0) {
+  async #assertEvidenceReferencesBelongToWorkflowInstitution(workflow, cycle) {
+    if (!this.evidenceReadiness || workflow.evidenceItemIds.length === 0) {
+      return;
+    }
+    const summary = await this.evidenceReadiness.evaluateWorkflowEvidenceReadiness({
+      institutionId: workflow.institutionId,
+      reviewCycleId: cycle.id,
+      evidenceCollectionId: workflow.evidenceCollectionId,
+      evidenceItemIds: workflow.evidenceItemIds,
+      minimumUsableEvidenceCount: 0,
+    });
+
+    if (summary.missingEvidenceItemIds.length > 0) {
+      throw new ValidationError(
+        `Referenced evidence item not found: ${summary.missingEvidenceItemIds.join(', ')}`,
+      );
+    }
+    if (summary.outOfInstitutionScopeEvidenceItemIds.length > 0) {
+      throw new ValidationError(
+        `Referenced evidence item must belong to workflow institution: ${summary.outOfInstitutionScopeEvidenceItemIds.join(', ')}`,
+      );
+    }
+  }
+
+  async #evaluateWorkflowEvidence(workflow, nextState) {
+    if (!this.evidenceReadiness) {
       return {
         requiredCount: workflow.evidenceItemIds.length,
         foundCount: workflow.evidenceItemIds.length,
+        requiredUsableEvidenceCount: 0,
+        usableEvidenceItemCount: workflow.evidenceItemIds.length,
         missingEvidenceItemIds: [],
+        outOfInstitutionScopeEvidenceItemIds: [],
         incompleteEvidenceItemIds: [],
         inactiveEvidenceItemIds: [],
         unusableEvidenceItemIds: [],
+        evidenceCollectionId: workflow.evidenceCollectionId ?? null,
+        collectionContextStatus: workflow.evidenceCollectionId ? 'not-evaluated' : 'not-applicable',
+        collectionUsableEvidenceCount: 0,
+        collectionRequirementSatisfied: true,
+        referencedEvidenceRequirementSatisfied: true,
         isSufficient: true,
       };
     }
 
-    const missingEvidenceItemIds = [];
-    const incompleteEvidenceItemIds = [];
-    const inactiveEvidenceItemIds = [];
-    const unusableEvidenceItemIds = [];
-
-    for (const evidenceItemId of workflow.evidenceItemIds) {
-      const evidenceItem = await this.evidenceManagement.getEvidenceItemById(evidenceItemId);
-      if (!evidenceItem) {
-        missingEvidenceItemIds.push(evidenceItemId);
-        continue;
-      }
-      if (evidenceItem.isComplete !== true) {
-        incompleteEvidenceItemIds.push(evidenceItemId);
-      }
-      if (evidenceItem.status !== 'active') {
-        inactiveEvidenceItemIds.push(evidenceItemId);
-      }
-      if (evidenceItem.usability?.isUsable !== true) {
-        unusableEvidenceItemIds.push(evidenceItemId);
-      }
-    }
-
-    return {
-      requiredCount: workflow.evidenceItemIds.length,
-      foundCount: workflow.evidenceItemIds.length - missingEvidenceItemIds.length,
-      missingEvidenceItemIds,
-      incompleteEvidenceItemIds,
-      inactiveEvidenceItemIds,
-      unusableEvidenceItemIds,
-      isSufficient:
-        missingEvidenceItemIds.length === 0 &&
-        incompleteEvidenceItemIds.length === 0 &&
-        inactiveEvidenceItemIds.length === 0 &&
-        unusableEvidenceItemIds.length === 0,
-    };
+    const minimumUsableEvidenceCount =
+      nextState === reviewWorkflowState.SUBMITTED ? 1 : workflow.evidenceItemIds.length;
+    return this.evidenceReadiness.evaluateWorkflowEvidenceReadiness({
+      institutionId: workflow.institutionId,
+      reviewCycleId: workflow.reviewCycleId,
+      evidenceCollectionId: workflow.evidenceCollectionId,
+      evidenceItemIds: workflow.evidenceItemIds,
+      minimumUsableEvidenceCount,
+    });
   }
 }
 
