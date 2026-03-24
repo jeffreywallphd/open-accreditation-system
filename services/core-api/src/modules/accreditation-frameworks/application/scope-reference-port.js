@@ -1,4 +1,8 @@
 export class ScopeReferencePort {
+  async ensurePersonExists(_personId) {
+    throw new Error('ScopeReferencePort.ensurePersonExists not implemented');
+  }
+
   async ensureInstitutionExists(_institutionId) {
     throw new Error('ScopeReferencePort.ensureInstitutionExists not implemented');
   }

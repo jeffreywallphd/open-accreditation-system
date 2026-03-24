@@ -7,9 +7,10 @@ import { applyMigrations } from './infrastructure/persistence/migration-runner.j
 import { DatabaseLifecycle } from './infrastructure/persistence/database.lifecycle.js';
 import { OrganizationRegistryModule } from './modules/organization-registry/organization-registry.module.js';
 import { IdentityAccessModule } from './modules/identity-access/identity-access.module.js';
+import { AccreditationFrameworksModule } from './modules/accreditation-frameworks/accreditation-frameworks.module.js';
 
 @Module({
-  imports: [OrganizationRegistryModule, IdentityAccessModule],
+  imports: [OrganizationRegistryModule, IdentityAccessModule, AccreditationFrameworksModule],
   providers: [
     {
       provide: APP_CONFIG,

@@ -57,3 +57,35 @@ export class AccreditationCycleRepository {
     throw new Error('AccreditationCycleRepository.findByFilter not implemented');
   }
 }
+
+export class ReviewerProfileRepository {
+  async save(_profile) {
+    throw new Error('ReviewerProfileRepository.save not implemented');
+  }
+
+  async getById(_id) {
+    throw new Error('ReviewerProfileRepository.getById not implemented');
+  }
+
+  async getByPersonId(_personId) {
+    throw new Error('ReviewerProfileRepository.getByPersonId not implemented');
+  }
+
+  async findByFilter(_filter) {
+    throw new Error('ReviewerProfileRepository.findByFilter not implemented');
+  }
+}
+
+export class ReviewTeamRepository {
+  async save(_team) {
+    throw new Error('ReviewTeamRepository.save not implemented');
+  }
+
+  async getById(_id) {
+    throw new Error('ReviewTeamRepository.getById not implemented');
+  }
+
+  async findByFilter(_filter) {
+    throw new Error('ReviewTeamRepository.findByFilter not implemented');
+  }
+}

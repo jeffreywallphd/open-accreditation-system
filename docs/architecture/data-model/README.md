@@ -928,6 +928,8 @@ This section is the implementation contract for the first domain slice under `se
 | --- | --- | --- | --- |
 | `FrameworkVersion` | `Standard`, `Criterion`, `CriterionElement`, `EvidenceRequirement` | add/update while `status=draft` | after publication, structure is immutable; changes require a new framework version |
 | `AccreditationCycle` | `AccreditationScope`, `CycleMilestone`, `ReviewEvent`, `DecisionRecord` | scope/milestone/event planning and cycle state transitions | decisions are append-only; corrections use a new decision that supersedes the prior record |
+| `ReviewTeam` | `ReviewTeamMembership` | add/supersede memberships and activate team lifecycle | membership history is append-only; superseding is explicit and a membership cannot be superseded twice |
+| `ReviewerProfile` | none | create and read for reviewer identity/projection metadata | one profile per person; profile person/institution linkage is immutable |
 | `AccreditationScope` (child) | `AccreditationScopeProgram`, `AccreditationScopeOrganizationUnit` | create/activate/exclude/close by cycle owner only | scope references must stay tied to the owning cycle |
 
 ### Framework/version invariants
@@ -946,6 +948,7 @@ This section is the implementation contract for the first domain slice under `se
 - `AccreditationScope` must contain at least one program or organization-unit reference; empty scopes are invalid.
 - `AccreditationScope`, `CycleMilestone`, and `ReviewEvent` dates must stay within `AccreditationCycle` start/end dates.
 - `CycleMilestone.scopeId` and `ReviewEvent.scopeId` must reference existing scope records in the same cycle.
+- `ReviewEvent.reviewTeamId` must reference a `ReviewTeam` in the same cycle.
 - `DecisionRecord` issuance is not allowed while the cycle is in `draft`.
 - `DecisionRecord` corrections/supersessions must reference an existing prior decision in the same cycle, and the same decision cannot be superseded twice.
 - Aggregate rehydration from persistence must reject cross-cycle child records and invalid scope/event/decision references.
@@ -956,6 +959,7 @@ This section is the implementation contract for the first domain slice under `se
 - `organization-registry` remains the source of truth for institution and organization-unit existence; `accreditation-frameworks` stores only stable IDs.
 - `curriculum-mapping` remains the source of truth for program existence; `accreditation-frameworks` stores only stable IDs.
 - Existence validation for program/organization references must happen through published application ports, never by direct table-level coupling.
+- Current `core-api` implementation validates institution/person/organization references through an `organization-registry` adapter; program validation remains port-driven and is enabled when a `curriculum-mapping` adapter is configured.
 - `evidence-management`, `workflow-approvals`, and `assessment-improvement` may reference IDs for traceability but must not mutate `accreditation-frameworks` state.
 
 ## Key cross-context relationships
