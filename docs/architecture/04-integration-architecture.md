@@ -70,7 +70,7 @@ Not all integrations are external-system integrations. For cross-context orchest
 - `evidence-management` -> `WorkflowEvidenceReadinessContract.evaluateWorkflowEvidenceReadiness`
 - consumer: `workflow-approvals` application layer (`WorkflowApprovalsService`)
 
-This contract keeps workflow decisions decoupled from evidence persistence internals while still enforcing evidence presence, usability, completeness, and cycle-context collection readiness constraints.
+This contract keeps workflow decisions decoupled from evidence persistence internals while still enforcing evidence presence, usability, completeness, current-vs-superseded constraints, and cycle/target-scoped collection readiness constraints.
 
 ## Data Flow Pattern
 

@@ -48,3 +48,13 @@ export class GetWorkflowStateForCycleQuery {
   }
 }
 
+export class GetWorkflowStateForCycleTargetQuery {
+  constructor(service) {
+    this.service = service;
+  }
+
+  async execute(reviewCycleId, targetType, targetId) {
+    return this.service.getWorkflowStateForCycleTarget(reviewCycleId, targetType, targetId);
+  }
+}
+

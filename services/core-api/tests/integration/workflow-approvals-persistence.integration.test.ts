@@ -129,6 +129,17 @@ export async function runTests(): Promise<void> {
       'workflow evidenceCollectionId must be declared by the owning review cycle',
     );
 
+    await assert.rejects(
+      () =>
+        workflow.createWorkflowInstance({
+          reviewCycleId: cycle.id,
+          targetType: 'report-section',
+          targetId: 'section_3_2',
+        }),
+      ValidationError,
+      'cycle-target tuple should be unique for workflow instances',
+    );
+
     const incompleteEvidence = await evidence.createEvidenceItem({
       institutionId,
       title: 'Incomplete Evidence',
@@ -199,6 +210,51 @@ export async function runTests(): Promise<void> {
       'approval should fail for present-but-unusable evidence',
     );
 
+    const supersededPredecessor = await evidence.createEvidenceItem({
+      institutionId,
+      title: 'Superseded Predecessor',
+      description: 'Initial version that will be superseded before approval.',
+      reviewCycleId: cycle.id,
+      evidenceType: evidenceType.NARRATIVE,
+      sourceType: evidenceSourceType.MANUAL,
+    });
+    await evidence.markEvidenceComplete(supersededPredecessor.id);
+    await evidence.activateEvidenceItem(supersededPredecessor.id);
+
+    const supersededSuccessor = await evidence.createSupersedingEvidenceVersion(supersededPredecessor.id, {
+      title: 'Superseding Current Version',
+      description: 'Current replacement version for superseded predecessor.',
+      reviewCycleId: cycle.id,
+    });
+    await evidence.markEvidenceComplete(supersededSuccessor.id);
+    await evidence.activateEvidenceItem(supersededSuccessor.id);
+
+    const supersededWorkflow = await workflow.createWorkflowInstance({
+      reviewCycleId: cycle.id,
+      targetType: 'report-section',
+      targetId: 'section_4_3',
+      reportSectionId: 'section_4_3',
+      evidenceCollectionId: 'evidence_set_wp_1',
+      evidenceItemIds: [supersededPredecessor.id],
+    });
+    await workflow.transitionWorkflowState(
+      supersededWorkflow.id,
+      reviewWorkflowState.IN_REVIEW,
+      workflowActorRole.FACULTY,
+      { reason: 'Send superseded predecessor evidence for review' },
+    );
+    await assert.rejects(
+      () =>
+        workflow.transitionWorkflowState(
+          supersededWorkflow.id,
+          reviewWorkflowState.APPROVED,
+          workflowActorRole.REVIEWER,
+          { reason: 'Should fail because predecessor is superseded/non-current' },
+        ),
+      ValidationError,
+      'approval should fail for superseded/non-current referenced evidence',
+    );
+
     const duplicateScope = await workflow.createReviewCycle({
       institutionId,
       name: 'Duplicate Active Scope',
@@ -242,6 +298,16 @@ export async function runTests(): Promise<void> {
     assert.equal(restoredWorkflow?.transitionHistory[2].actorRole, workflowActorRole.ADMIN);
     assert.equal(restoredWorkflow?.transitionHistory[2].evidenceSummary.collectionRequirementSatisfied, true);
     assert.equal(restoredWorkflow?.transitionHistory[2].evidenceSummary.requiredUsableEvidenceCount, 1);
+    assert.equal(restoredWorkflow?.transitionHistory[2].evidenceSummary.readinessPolicy.requireCurrentReferencedEvidence, true);
+
+    const restoredCycleTargetState = await workflow.getWorkflowStateForCycleTarget(
+      reviewCycleId,
+      'report-section',
+      'section_3_2',
+    );
+    assert.ok(restoredCycleTargetState);
+    assert.equal(restoredCycleTargetState?.id, reviewWorkflowId);
+    assert.equal(restoredCycleTargetState?.state, reviewWorkflowState.SUBMITTED);
 
     await assert.rejects(
       () =>

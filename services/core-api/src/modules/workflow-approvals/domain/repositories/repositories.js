@@ -28,5 +28,9 @@ export class ReviewWorkflowRepository {
   async findByFilter(_filter) {
     throw new Error('ReviewWorkflowRepository.findByFilter not implemented');
   }
+
+  async getByCycleAndTarget(_reviewCycleId, _targetType, _targetId) {
+    throw new Error('ReviewWorkflowRepository.getByCycleAndTarget not implemented');
+  }
 }
 

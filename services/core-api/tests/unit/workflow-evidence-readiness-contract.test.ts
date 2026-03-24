@@ -33,6 +33,33 @@ export async function runTests(): Promise<void> {
         usability: { isUsable: false },
       },
     ],
+    [
+      'ev_superseded',
+      {
+        id: 'ev_superseded',
+        institutionId: 'inst_1',
+        isComplete: true,
+        status: 'superseded',
+        supersededByEvidenceItemId: 'ev_current_successor',
+        usability: { isUsable: false },
+      },
+    ],
+    [
+      'ev_current_successor',
+      {
+        id: 'ev_current_successor',
+        institutionId: 'inst_1',
+        isComplete: true,
+        status: 'active',
+        supersededByEvidenceItemId: null,
+        usability: { isUsable: true },
+      },
+    ],
+  ]);
+
+  const targetScopedEvidence = new Map<string, any[]>([
+    ['narrative-section:section_1', [evidenceById.get('ev_complete_usable')]],
+    ['narrative-section:section_empty', []],
   ]);
 
   const service = new WorkflowEvidenceReadinessService({
@@ -44,6 +71,18 @@ export async function runTests(): Promise<void> {
         if (filter.reviewCycleId === 'cycle_with_usable') {
           return [evidenceById.get('ev_complete_usable')];
         }
+        return [];
+      },
+      async listEvidenceByNarrativeSection(sectionId: string) {
+        return targetScopedEvidence.get(`narrative-section:${sectionId}`) ?? [];
+      },
+      async listEvidenceByCriterion() {
+        return [];
+      },
+      async listEvidenceByCriterionElement() {
+        return [];
+      },
+      async listEvidenceByLearningOutcome() {
         return [];
       },
     },
@@ -77,14 +116,59 @@ export async function runTests(): Promise<void> {
   assert.equal(unusableSummary.inactiveEvidenceItemIds.length, 0);
   assert.equal(unusableSummary.isSufficient, false);
 
+  const supersededSummary = await service.evaluateWorkflowEvidenceReadiness({
+    institutionId: 'inst_1',
+    reviewCycleId: 'cycle_1',
+    evidenceItemIds: ['ev_superseded'],
+    readinessPolicy: {
+      requiredReadinessLevel: 'usable',
+      requireCurrentReferencedEvidence: true,
+      minimumReferencedUsableEvidenceCount: 1,
+    },
+  });
+  assert.equal(supersededSummary.supersededEvidenceItemIds.length, 1);
+  assert.equal(supersededSummary.nonCurrentEvidenceItemIds.length, 1);
+  assert.equal(supersededSummary.referencedEvidenceRequirementSatisfied, false);
+  assert.equal(supersededSummary.isSufficient, false);
+
   const sufficientSummary = await service.evaluateWorkflowEvidenceReadiness({
     institutionId: 'inst_1',
     reviewCycleId: 'cycle_with_usable',
     evidenceCollectionId: 'collection_1',
+    targetType: 'report-section',
+    targetId: 'section_1',
+    reportSectionId: 'section_1',
     evidenceItemIds: ['ev_complete_usable'],
+    readinessPolicy: {
+      requiredReadinessLevel: 'usable',
+      requireCurrentReferencedEvidence: true,
+      minimumReferencedUsableEvidenceCount: 1,
+      requireCollectionScopedUsableEvidence: true,
+      minimumCollectionUsableEvidenceCount: 1,
+    },
   });
   assert.equal(sufficientSummary.collectionRequirementSatisfied, true);
   assert.equal(sufficientSummary.collectionUsableEvidenceCount, 1);
   assert.equal(sufficientSummary.isSufficient, true);
+
+  const emptyTargetCollectionSummary = await service.evaluateWorkflowEvidenceReadiness({
+    institutionId: 'inst_1',
+    reviewCycleId: 'cycle_with_usable',
+    evidenceCollectionId: 'collection_1',
+    targetType: 'report-section',
+    targetId: 'section_empty',
+    reportSectionId: 'section_empty',
+    evidenceItemIds: ['ev_current_successor'],
+    readinessPolicy: {
+      requiredReadinessLevel: 'usable',
+      requireCurrentReferencedEvidence: true,
+      minimumReferencedUsableEvidenceCount: 1,
+      requireCollectionScopedUsableEvidence: true,
+      minimumCollectionUsableEvidenceCount: 1,
+    },
+  });
+  assert.equal(emptyTargetCollectionSummary.collectionRequirementSatisfied, false);
+  assert.equal(emptyTargetCollectionSummary.collectionContextStatus, 'empty');
+  assert.equal(emptyTargetCollectionSummary.isSufficient, false);
 }
 

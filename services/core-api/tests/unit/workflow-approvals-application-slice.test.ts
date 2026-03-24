@@ -13,7 +13,10 @@ import {
   StartReviewCycleCommand,
   TransitionReviewWorkflowStateCommand,
 } from '../../src/modules/workflow-approvals/application/commands/workflow-approvals-commands.js';
-import { GetWorkflowStateForCycleQuery } from '../../src/modules/workflow-approvals/application/queries/workflow-approvals-queries.js';
+import {
+  GetWorkflowStateForCycleQuery,
+  GetWorkflowStateForCycleTargetQuery,
+} from '../../src/modules/workflow-approvals/application/queries/workflow-approvals-queries.js';
 import {
   InMemoryReviewCycleRepository,
   InMemoryReviewWorkflowRepository,
@@ -61,6 +64,7 @@ export async function runTests(): Promise<void> {
   const createReviewWorkflow = new CreateReviewWorkflowCommand(service);
   const transitionReviewWorkflowState = new TransitionReviewWorkflowStateCommand(service);
   const getWorkflowStateForCycle = new GetWorkflowStateForCycleQuery(service);
+  const getWorkflowStateForCycleTarget = new GetWorkflowStateForCycleTargetQuery(service);
 
   const cycle = await createReviewCycle.execute({
     institutionId: institution.id,
@@ -159,6 +163,17 @@ export async function runTests(): Promise<void> {
   });
   assert.equal(workflow.state, reviewWorkflowState.DRAFT);
 
+  await assert.rejects(
+    () =>
+      createReviewWorkflow.execute({
+        reviewCycleId: cycle.id,
+        targetType: 'report-section',
+        targetId: 'section_2_1',
+      }),
+    ValidationError,
+    'workflow cycle-target tuple should be unique',
+  );
+
   await transitionReviewWorkflowState.execute(
     workflow.id,
     reviewWorkflowState.IN_REVIEW,
@@ -201,7 +216,6 @@ export async function runTests(): Promise<void> {
   assert.equal(approved.state, reviewWorkflowState.APPROVED);
   assert.equal(approved.transitionHistory.length, 2);
   assert.equal(approved.transitionHistory[1].evidenceSummary.collectionRequirementSatisfied, true);
-  assert.equal(approved.transitionHistory[1].evidenceSummary.collectionUsableEvidenceCount >= 1, true);
 
   await assert.rejects(
     () =>
@@ -225,5 +239,59 @@ export async function runTests(): Promise<void> {
   assert.equal(cycleWorkflows[0].state, reviewWorkflowState.SUBMITTED);
   assert.equal(cycleWorkflows[0].transitionHistory[2].evidenceSummary.requiredUsableEvidenceCount, 1);
   assert.equal(cycleWorkflows[0].transitionHistory[2].evidenceSummary.isSufficient, true);
+
+  const cycleTargetWorkflow = await getWorkflowStateForCycleTarget.execute(
+    cycle.id,
+    'report-section',
+    'section_2_1',
+  );
+  assert.ok(cycleTargetWorkflow);
+  assert.equal(cycleTargetWorkflow?.id, workflow.id);
+  assert.equal(cycleTargetWorkflow?.state, reviewWorkflowState.SUBMITTED);
+
+  const supersededPredecessor = await evidenceManagement.createEvidenceItem({
+    id: 'ev_superseded_predecessor',
+    institutionId: institution.id,
+    title: 'Superseded predecessor',
+    description: 'Initial evidence version to be superseded',
+    reviewCycleId: cycle.id,
+    evidenceType: evidenceType.NARRATIVE,
+    sourceType: evidenceSourceType.MANUAL,
+  });
+  await evidenceManagement.markEvidenceComplete(supersededPredecessor.id);
+  await evidenceManagement.activateEvidenceItem(supersededPredecessor.id);
+
+  const successor = await evidenceManagement.createSupersedingEvidenceVersion(supersededPredecessor.id, {
+    id: 'ev_superseded_successor',
+    title: 'Superseding evidence version',
+    description: 'Current replacement version',
+    reviewCycleId: cycle.id,
+  });
+  await evidenceManagement.markEvidenceComplete(successor.id);
+  await evidenceManagement.activateEvidenceItem(successor.id);
+
+  const supersededWorkflow = await createReviewWorkflow.execute({
+    reviewCycleId: cycle.id,
+    targetType: 'report-section',
+    targetId: 'section_superseded',
+    reportSectionId: 'section_superseded',
+    evidenceCollectionId: 'collection_1',
+    evidenceItemIds: [supersededPredecessor.id],
+  });
+  await transitionReviewWorkflowState.execute(
+    supersededWorkflow.id,
+    reviewWorkflowState.IN_REVIEW,
+    workflowActorRole.FACULTY,
+  );
+  await assert.rejects(
+    () =>
+      transitionReviewWorkflowState.execute(
+        supersededWorkflow.id,
+        reviewWorkflowState.APPROVED,
+        workflowActorRole.REVIEWER,
+      ),
+    ValidationError,
+    'approval should fail when referenced evidence is superseded/non-current',
+  );
 }
 

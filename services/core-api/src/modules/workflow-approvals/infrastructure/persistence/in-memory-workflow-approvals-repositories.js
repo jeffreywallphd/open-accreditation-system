@@ -178,6 +178,7 @@ export class InMemoryReviewWorkflowRepository extends ReviewWorkflowRepository {
       this.#assertIdentityUnchanged(existing, validated);
       this.#assertTransitionHistoryAppendOnly(existing, validated);
     }
+    this.#assertCycleTargetUnique(validated);
 
     const snapshot = structuredClone(toReviewWorkflowSnapshot(validated));
     this.workflows.set(validated.id, snapshot);
@@ -193,6 +194,16 @@ export class InMemoryReviewWorkflowRepository extends ReviewWorkflowRepository {
     return [...this.workflows.values()]
       .map((item) => ReviewWorkflow.rehydrate(structuredClone(item)))
       .filter((workflow) => reviewWorkflowMatchesFilter(workflow, filter));
+  }
+
+  async getByCycleAndTarget(reviewCycleId, targetType, targetId) {
+    const snapshot = [...this.workflows.values()].find(
+      (workflow) =>
+        workflow.reviewCycleId === reviewCycleId &&
+        workflow.targetType === targetType &&
+        workflow.targetId === targetId,
+    );
+    return snapshot ? ReviewWorkflow.rehydrate(structuredClone(snapshot)) : null;
   }
 
   #assertIdentityUnchanged(existing, next) {
@@ -226,6 +237,21 @@ export class InMemoryReviewWorkflowRepository extends ReviewWorkflowRepository {
       ) {
         throw new ValidationError(`Workflow transition history is append-only: ${persisted.id} cannot be modified`);
       }
+    }
+  }
+
+  #assertCycleTargetUnique(next) {
+    const duplicate = [...this.workflows.values()].find(
+      (workflow) =>
+        workflow.id !== next.id &&
+        workflow.reviewCycleId === next.reviewCycleId &&
+        workflow.targetType === next.targetType &&
+        workflow.targetId === next.targetId,
+    );
+    if (duplicate) {
+      throw new ValidationError(
+        `ReviewWorkflow cycle-target must be unique (existing: ${duplicate.id})`,
+      );
     }
   }
 }

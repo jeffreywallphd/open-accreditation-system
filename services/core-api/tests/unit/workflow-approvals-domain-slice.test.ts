@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { ValidationError } from '../../src/modules/shared/kernel/errors.js';
 import { ReviewCycle } from '../../src/modules/workflow-approvals/domain/entities/review-cycle.js';
 import { ReviewWorkflow } from '../../src/modules/workflow-approvals/domain/entities/review-workflow.js';
+import { buildEvidenceReadinessPolicyForTransition } from '../../src/modules/workflow-approvals/domain/policies/workflow-evidence-readiness-policy.js';
 import {
   reviewCycleStatus,
   reviewWorkflowState,
@@ -143,5 +144,37 @@ export async function runTests(): Promise<void> {
     ValidationError,
     'workflow transition sequence must be contiguous',
   );
+
+  const approvalPolicy = buildEvidenceReadinessPolicyForTransition(
+    reviewWorkflowState.IN_REVIEW,
+    reviewWorkflowState.APPROVED,
+    workflow,
+  );
+  assert.equal(approvalPolicy.requiredReadinessLevel, 'usable');
+  assert.equal(approvalPolicy.requireCurrentReferencedEvidence, true);
+  assert.equal(approvalPolicy.requireCollectionScopedUsableEvidence, false);
+
+  const submissionPolicy = buildEvidenceReadinessPolicyForTransition(
+    reviewWorkflowState.APPROVED,
+    reviewWorkflowState.SUBMITTED,
+    {
+      ...workflow,
+      evidenceCollectionId: 'collection_1',
+      evidenceItemIds: ['evidence_1'],
+    },
+  );
+  assert.equal(submissionPolicy.requireCollectionScopedUsableEvidence, false);
+
+  const collectionOnlySubmissionPolicy = buildEvidenceReadinessPolicyForTransition(
+    reviewWorkflowState.APPROVED,
+    reviewWorkflowState.SUBMITTED,
+    {
+      ...workflow,
+      evidenceCollectionId: 'collection_1',
+      evidenceItemIds: [],
+    },
+  );
+  assert.equal(collectionOnlySubmissionPolicy.requireCollectionScopedUsableEvidence, true);
+  assert.equal(collectionOnlySubmissionPolicy.minimumCollectionUsableEvidenceCount, 1);
 }
 
