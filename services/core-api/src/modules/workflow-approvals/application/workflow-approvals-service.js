@@ -1,7 +1,8 @@
 import { NotFoundError, ValidationError } from '../../shared/kernel/errors.js';
 import { ReviewCycle } from '../domain/entities/review-cycle.js';
 import { ReviewWorkflow } from '../domain/entities/review-workflow.js';
-import { reviewCycleStatus, reviewWorkflowState } from '../domain/value-objects/workflow-statuses.js';
+import { buildEvidenceReadinessPolicyForTransition } from '../domain/policies/workflow-evidence-readiness-policy.js';
+import { reviewCycleStatus } from '../domain/value-objects/workflow-statuses.js';
 
 export class WorkflowApprovalsService {
   constructor(deps) {
@@ -53,6 +54,7 @@ export class WorkflowApprovalsService {
       institutionId: cycle.institutionId,
       reviewCycleId: cycle.id,
     });
+    await this.#assertNoExistingWorkflowForCycleTarget(workflow.reviewCycleId, workflow.targetType, workflow.targetId);
     this.#assertEvidenceCollectionReference(workflow, cycle);
     await this.#assertEvidenceReferencesBelongToWorkflowInstitution(workflow, cycle);
     return this.workflows.save(workflow);
@@ -92,6 +94,14 @@ export class WorkflowApprovalsService {
   async getWorkflowStateForCycle(reviewCycleId) {
     await this.#requireReviewCycle(reviewCycleId);
     return this.workflows.findByFilter({ reviewCycleId });
+  }
+
+  async getWorkflowStateForCycleTarget(reviewCycleId, targetType, targetId) {
+    await this.#requireReviewCycle(reviewCycleId);
+    if (!targetType || !targetId) {
+      throw new ValidationError('targetType and targetId are required');
+    }
+    return this.workflows.getByCycleAndTarget(reviewCycleId, targetType, targetId);
   }
 
   async #requireInstitution(institutionId) {
@@ -154,8 +164,17 @@ export class WorkflowApprovalsService {
       institutionId: workflow.institutionId,
       reviewCycleId: cycle.id,
       evidenceCollectionId: workflow.evidenceCollectionId,
+      targetType: workflow.targetType,
+      targetId: workflow.targetId,
+      reportSectionId: workflow.reportSectionId,
       evidenceItemIds: workflow.evidenceItemIds,
-      minimumUsableEvidenceCount: 0,
+      readinessPolicy: {
+        requiredReadinessLevel: 'present',
+        requireCurrentReferencedEvidence: false,
+        minimumReferencedUsableEvidenceCount: 0,
+        requireCollectionScopedUsableEvidence: false,
+        minimumCollectionUsableEvidenceCount: 0,
+      },
     });
 
     if (summary.missingEvidenceItemIds.length > 0) {
@@ -182,24 +201,44 @@ export class WorkflowApprovalsService {
         incompleteEvidenceItemIds: [],
         inactiveEvidenceItemIds: [],
         unusableEvidenceItemIds: [],
+        nonCurrentEvidenceItemIds: [],
+        supersededEvidenceItemIds: [],
         evidenceCollectionId: workflow.evidenceCollectionId ?? null,
         collectionContextStatus: workflow.evidenceCollectionId ? 'not-evaluated' : 'not-applicable',
         collectionUsableEvidenceCount: 0,
         collectionRequirementSatisfied: true,
         referencedEvidenceRequirementSatisfied: true,
+        readinessPolicy: {
+          requiredReadinessLevel: 'usable',
+          requireCurrentReferencedEvidence: true,
+          minimumReferencedUsableEvidenceCount: workflow.evidenceItemIds.length,
+          requireCollectionScopedUsableEvidence: false,
+          minimumCollectionUsableEvidenceCount: 0,
+        },
         isSufficient: true,
       };
     }
 
-    const minimumUsableEvidenceCount =
-      nextState === reviewWorkflowState.SUBMITTED ? 1 : workflow.evidenceItemIds.length;
+    const readinessPolicy = buildEvidenceReadinessPolicyForTransition(workflow.state, nextState, workflow);
     return this.evidenceReadiness.evaluateWorkflowEvidenceReadiness({
       institutionId: workflow.institutionId,
       reviewCycleId: workflow.reviewCycleId,
       evidenceCollectionId: workflow.evidenceCollectionId,
+      targetType: workflow.targetType,
+      targetId: workflow.targetId,
+      reportSectionId: workflow.reportSectionId,
       evidenceItemIds: workflow.evidenceItemIds,
-      minimumUsableEvidenceCount,
+      readinessPolicy,
     });
+  }
+
+  async #assertNoExistingWorkflowForCycleTarget(reviewCycleId, targetType, targetId) {
+    const existing = await this.workflows.getByCycleAndTarget(reviewCycleId, targetType, targetId);
+    if (existing) {
+      throw new ValidationError(
+        `ReviewWorkflow already exists for cycle-target: cycle=${reviewCycleId} target=${targetType}:${targetId}`,
+      );
+    }
   }
 }
 

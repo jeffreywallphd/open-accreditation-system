@@ -229,6 +229,7 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
         this.#assertIdentityUnchanged(existing, validated);
         this.#assertTransitionHistoryAppendOnly(validated);
       }
+      this.#assertCycleTargetUnique(validated);
 
       this.database.run(
         `INSERT INTO workflow_review_workflows
@@ -322,6 +323,18 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
     return rows.map((row) => this.#rehydrateWorkflow(row));
   }
 
+  async getByCycleAndTarget(reviewCycleId, targetType, targetId) {
+    const row = this.database.get(
+      `SELECT * FROM workflow_review_workflows
+       WHERE review_cycle_id = @reviewCycleId
+         AND target_type = @targetType
+         AND target_id = @targetId
+       LIMIT 1`,
+      { reviewCycleId, targetType, targetId },
+    );
+    return row ? this.#rehydrateWorkflow(row) : null;
+  }
+
   #rehydrateWorkflow(row) {
     const transitionRows = this.database.all(
       `SELECT * FROM workflow_review_workflow_transitions
@@ -399,6 +412,28 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
       current.transitionedAt !== persistedRow.transitioned_at
     ) {
       throw new ValidationError(`Workflow transition history is append-only: ${persistedRow.id} cannot be modified`);
+    }
+  }
+
+  #assertCycleTargetUnique(next) {
+    const duplicate = this.database.get(
+      `SELECT id FROM workflow_review_workflows
+       WHERE review_cycle_id = @reviewCycleId
+         AND target_type = @targetType
+         AND target_id = @targetId
+         AND id <> @id
+       LIMIT 1`,
+      {
+        reviewCycleId: next.reviewCycleId,
+        targetType: next.targetType,
+        targetId: next.targetId,
+        id: next.id,
+      },
+    );
+    if (duplicate) {
+      throw new ValidationError(
+        `ReviewWorkflow cycle-target must be unique (existing: ${duplicate.id})`,
+      );
     }
   }
 }

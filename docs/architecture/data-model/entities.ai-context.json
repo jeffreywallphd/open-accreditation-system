@@ -1,7 +1,7 @@
 {
   "meta": {
     "document": "Open Accreditation System entity model AI context",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "source_docs": [
       "README.md",
       "docs/architecture/README.md",
@@ -793,9 +793,10 @@
       "Workflow role policy is enforced for faculty, reviewer, and admin transitions.",
       "Workflow transition history is append-only and cannot be mutated in-place.",
       "Workflow transition history is sequence-backed and must remain contiguous with valid from/to state chaining.",
+      "ReviewWorkflow is unique per (reviewCycleId, targetType, targetId) to preserve deterministic cycle-target state retrieval.",
       "Workflow evidence integration is reference-based (evidenceItemIds/evidenceCollectionId) and does not embed workflow state in EvidenceItem.",
       "ReviewWorkflow.evidenceCollectionId must resolve to a ReviewCycle.evidenceSetIds key for the owning cycle.",
-      "Approval/submission transitions evaluate referenced evidence presence, completeness, activity status, and usability through the evidence-management readiness contract."
+      "Approval/submission transitions evaluate referenced evidence readiness through an explicit workflow policy over the evidence-management readiness contract, including presence/completeness/activity/usability, current-vs-superseded checks, and target-scoped collection sufficiency."
     ],
     "crossContextReferenceRules": [
       "accreditation-frameworks validates local shape and ownership invariants for framework and cycle aggregates.",

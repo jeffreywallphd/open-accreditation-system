@@ -1064,9 +1064,14 @@ Implementation note (current `core-api` slice): the `workflow-approvals` module 
 - Role-governed transitions are enforced in domain logic and constrained to `faculty`, `reviewer`, and `admin` policy.
 - `ReviewWorkflow` transition history is append-only; existing transition records cannot be mutated or removed by repository save paths.
 - `ReviewWorkflow` transition history is sequence-backed and must remain contiguous (`1..n`) with valid state chaining (`fromState` = previous `toState`) and terminal state consistency (`ReviewWorkflow.state` = last transition `toState`).
+- `ReviewWorkflow` is unique per cycle-target tuple (`reviewCycleId`, `targetType`, `targetId`) so workflow state retrieval by cycle/report target is deterministic.
 - Workflow evidence integration remains reference-based (`evidenceItemIds`, `evidenceCollectionId`) and does not embed workflow state in `EvidenceItem`.
 - `ReviewWorkflow.evidenceCollectionId` must map to a `ReviewCycle.evidenceSetIds` entry so collection/set membership remains cycle-governed.
-- Approval/submission transitions evaluate referenced evidence readiness (presence + complete + active + usable) through the evidence-management application contract (`evaluateWorkflowEvidenceReadiness`) and pass evidence sufficiency context into domain transition validation.
+- Approval/submission transitions evaluate referenced evidence readiness through the evidence-management application contract (`evaluateWorkflowEvidenceReadiness`) using explicit workflow readiness policy:
+  - referenced evidence presence + completeness + active/usability status
+  - currentness (non-superseded) where required for governed transitions
+  - target-scoped collection sufficiency for the owning cycle/report target context
+  - evidence sufficiency summary persisted on transition history records for inspection/audit
 
 ## Implementation-ready curriculum linkage invariants (Epic 2 Phase 0 groundwork)
 
