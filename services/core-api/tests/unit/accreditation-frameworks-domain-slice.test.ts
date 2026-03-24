@@ -5,6 +5,8 @@ import {
   InMemoryAccreditationFrameworkRepository,
   InMemoryAccreditorRepository,
   InMemoryFrameworkVersionRepository,
+  InMemoryReviewerProfileRepository,
+  InMemoryReviewTeamRepository,
   InMemoryScopeReferenceAdapter,
 } from '../../src/modules/accreditation-frameworks/infrastructure/persistence/in-memory-accreditation-frameworks-repositories.js';
 import { ValidationError } from '../../src/modules/shared/kernel/errors.js';
@@ -21,7 +23,10 @@ function createService() {
     frameworks: new InMemoryAccreditationFrameworkRepository(),
     frameworkVersions: new InMemoryFrameworkVersionRepository(),
     cycles: new InMemoryAccreditationCycleRepository(),
+    reviewerProfiles: new InMemoryReviewerProfileRepository(),
+    reviewTeams: new InMemoryReviewTeamRepository(),
     scopeReferences: new InMemoryScopeReferenceAdapter({
+      personIds: ['person_1'],
       institutionIds: ['inst_1'],
       programIds: ['prog_1', 'prog_2'],
       organizationUnitIds: ['org_1', 'org_2'],
@@ -344,4 +349,34 @@ export async function runTests(): Promise<void> {
   readOne.versionTag = 'tampered';
   const readTwo = await service.getFrameworkVersionById(mutableVersion.id);
   assert.equal(readTwo?.versionTag, '2026.3');
+
+  const reviewerProfile = await service.createReviewerProfile({
+    personId: 'person_1',
+    institutionId: 'inst_1',
+    reviewerType: 'peer-reviewer',
+  });
+
+  const reviewTeam = await service.createReviewTeam({
+    accreditationCycleId: cycle.id,
+    institutionId: 'inst_1',
+    name: 'Primary Team',
+  });
+
+  const teamWithMembership = await service.addReviewTeamMembership(reviewTeam.id, {
+    personId: 'person_1',
+    reviewerProfileId: reviewerProfile.id,
+    role: 'chair',
+    isPrimary: true,
+  });
+  assert.equal(teamWithMembership.memberships.length, 1);
+
+  await assert.rejects(
+    () =>
+      service.addReviewTeamMembership(reviewTeam.id, {
+        personId: 'person_1',
+        reviewerProfileId: reviewerProfile.id,
+        role: 'observer',
+      }),
+    ValidationError,
+  );
 }

@@ -3,6 +3,8 @@ import { AccreditationCycle } from '../domain/entities/accreditation-cycle.js';
 import { AccreditationFramework } from '../domain/entities/accreditation-framework.js';
 import { Accreditor } from '../domain/entities/accreditor.js';
 import { FrameworkVersion } from '../domain/entities/framework-version.js';
+import { ReviewerProfile } from '../domain/entities/reviewer-profile.js';
+import { ReviewTeam } from '../domain/entities/review-team.js';
 import { frameworkVersionStatus } from '../domain/value-objects/accreditation-statuses.js';
 
 export class AccreditationFrameworksService {
@@ -11,6 +13,8 @@ export class AccreditationFrameworksService {
     this.frameworks = deps.frameworks;
     this.frameworkVersions = deps.frameworkVersions;
     this.cycles = deps.cycles;
+    this.reviewerProfiles = deps.reviewerProfiles;
+    this.reviewTeams = deps.reviewTeams;
     this.scopeReferences = deps.scopeReferences;
   }
 
@@ -114,6 +118,12 @@ export class AccreditationFrameworksService {
 
   async addReviewEvent(cycleId, input) {
     const cycle = await this.#requireCycle(cycleId);
+    if (input.reviewTeamId) {
+      const reviewTeam = await this.#requireReviewTeam(input.reviewTeamId);
+      if (reviewTeam.accreditationCycleId !== cycleId) {
+        throw new ValidationError('ReviewEvent.reviewTeamId must reference a ReviewTeam in the same AccreditationCycle');
+      }
+    }
     cycle.addReviewEvent(input);
     return this.cycles.save(cycle);
   }
@@ -124,12 +134,69 @@ export class AccreditationFrameworksService {
     return this.cycles.save(cycle);
   }
 
+  async createReviewerProfile(input) {
+    await this.scopeReferences.ensurePersonExists(input.personId);
+    await this.scopeReferences.ensureInstitutionExists(input.institutionId);
+
+    const existing = await this.reviewerProfiles.getByPersonId(input.personId);
+    if (existing && existing.institutionId === input.institutionId) {
+      throw new ValidationError(`ReviewerProfile already exists for personId: ${input.personId}`);
+    }
+
+    const profile = ReviewerProfile.create(input);
+    return this.reviewerProfiles.save(profile);
+  }
+
+  async createReviewTeam(input) {
+    const cycle = await this.#requireCycle(input.accreditationCycleId);
+    await this.scopeReferences.ensureInstitutionExists(input.institutionId);
+    if (cycle.institutionId !== input.institutionId) {
+      throw new ValidationError('ReviewTeam.institutionId must match AccreditationCycle.institutionId');
+    }
+
+    const team = ReviewTeam.create({
+      ...input,
+      status: input.status === 'active' ? 'draft' : input.status,
+    });
+    if (input.status === 'active') {
+      team.activate();
+    }
+    return this.reviewTeams.save(team);
+  }
+
+  async addReviewTeamMembership(reviewTeamId, input) {
+    const team = await this.#requireReviewTeam(reviewTeamId);
+    const cycle = await this.#requireCycle(team.accreditationCycleId);
+    await this.scopeReferences.ensurePersonExists(input.personId);
+
+    if (input.reviewerProfileId) {
+      const profile = await this.#requireReviewerProfile(input.reviewerProfileId);
+      if (profile.personId !== input.personId) {
+        throw new ValidationError('ReviewTeamMembership.personId must match ReviewerProfile.personId');
+      }
+      if (profile.institutionId !== team.institutionId) {
+        throw new ValidationError('ReviewTeamMembership.reviewerProfileId must belong to ReviewTeam institution');
+      }
+    }
+
+    if (cycle.institutionId !== team.institutionId) {
+      throw new ValidationError('ReviewTeam.institutionId must match AccreditationCycle.institutionId');
+    }
+
+    team.addMembership(input);
+    return this.reviewTeams.save(team);
+  }
+
   async getFrameworkVersionById(id) {
     return this.frameworkVersions.getById(id);
   }
 
   async getAccreditationCycleById(id) {
     return this.cycles.getById(id);
+  }
+
+  async getReviewTeamById(id) {
+    return this.reviewTeams.getById(id);
   }
 
   async #requireFrameworkVersion(id) {
@@ -146,5 +213,21 @@ export class AccreditationFrameworksService {
       throw new NotFoundError('AccreditationCycle', id);
     }
     return cycle;
+  }
+
+  async #requireReviewerProfile(id) {
+    const profile = await this.reviewerProfiles.getById(id);
+    if (!profile) {
+      throw new NotFoundError('ReviewerProfile', id);
+    }
+    return profile;
+  }
+
+  async #requireReviewTeam(id) {
+    const team = await this.reviewTeams.getById(id);
+    if (!team) {
+      throw new NotFoundError('ReviewTeam', id);
+    }
+    return team;
   }
 }

@@ -36,3 +36,15 @@ export const decisionRecordStatus = Object.freeze({
   ISSUED: 'issued',
   SUPERSEDED: 'superseded',
 });
+
+export const reviewTeamStatus = Object.freeze({
+  DRAFT: 'draft',
+  ACTIVE: 'active',
+  CLOSED: 'closed',
+});
+
+export const reviewTeamMembershipState = Object.freeze({
+  ACTIVE: 'active',
+  SUPERSEDED: 'superseded',
+  REMOVED: 'removed',
+});

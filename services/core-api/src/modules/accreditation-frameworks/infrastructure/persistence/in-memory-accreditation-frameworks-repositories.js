@@ -3,6 +3,8 @@ import {
   AccreditationFrameworkRepository,
   AccreditorRepository,
   FrameworkVersionRepository,
+  ReviewerProfileRepository,
+  ReviewTeamRepository,
 } from '../../domain/repositories/repositories.js';
 import { ScopeReferencePort } from '../../application/scope-reference-port.js';
 import { ValidationError } from '../../../shared/kernel/errors.js';
@@ -10,6 +12,8 @@ import { Accreditor } from '../../domain/entities/accreditor.js';
 import { AccreditationFramework } from '../../domain/entities/accreditation-framework.js';
 import { FrameworkVersion } from '../../domain/entities/framework-version.js';
 import { AccreditationCycle } from '../../domain/entities/accreditation-cycle.js';
+import { ReviewerProfile } from '../../domain/entities/reviewer-profile.js';
+import { ReviewTeam } from '../../domain/entities/review-team.js';
 
 function matchesFilter(item, filter) {
   return Object.entries(filter).every(([key, value]) => {
@@ -123,12 +127,72 @@ export class InMemoryAccreditationCycleRepository extends AccreditationCycleRepo
   }
 }
 
+export class InMemoryReviewerProfileRepository extends ReviewerProfileRepository {
+  constructor() {
+    super();
+    this.items = new Map();
+  }
+
+  async save(profile) {
+    const persisted = structuredClone(profile);
+    this.items.set(profile.id, persisted);
+    return new ReviewerProfile(structuredClone(persisted));
+  }
+
+  async getById(id) {
+    const item = this.items.get(id);
+    return item ? new ReviewerProfile(structuredClone(item)) : null;
+  }
+
+  async getByPersonId(personId) {
+    const item = [...this.items.values()].find((stored) => stored.personId === personId) ?? null;
+    return item ? new ReviewerProfile(structuredClone(item)) : null;
+  }
+
+  async findByFilter(filter = {}) {
+    return [...this.items.values()]
+      .filter((item) => matchesFilter(item, filter))
+      .map((item) => new ReviewerProfile(structuredClone(item)));
+  }
+}
+
+export class InMemoryReviewTeamRepository extends ReviewTeamRepository {
+  constructor() {
+    super();
+    this.items = new Map();
+  }
+
+  async save(team) {
+    const persisted = structuredClone(team);
+    this.items.set(team.id, persisted);
+    return new ReviewTeam(structuredClone(persisted));
+  }
+
+  async getById(id) {
+    const item = this.items.get(id);
+    return item ? new ReviewTeam(structuredClone(item)) : null;
+  }
+
+  async findByFilter(filter = {}) {
+    return [...this.items.values()]
+      .filter((item) => matchesFilter(item, filter))
+      .map((item) => new ReviewTeam(structuredClone(item)));
+  }
+}
+
 export class InMemoryScopeReferenceAdapter extends ScopeReferencePort {
   constructor(input = {}) {
     super();
+    this.personIds = new Set(input.personIds ?? []);
     this.institutionIds = new Set(input.institutionIds ?? []);
     this.programIds = new Set(input.programIds ?? []);
     this.organizationUnitIds = new Set(input.organizationUnitIds ?? []);
+  }
+
+  async ensurePersonExists(personId) {
+    if (!this.personIds.has(personId)) {
+      throw new ValidationError(`Person not found: ${personId}`);
+    }
   }
 
   async ensureInstitutionExists(institutionId) {
