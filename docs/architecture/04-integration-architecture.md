@@ -72,6 +72,12 @@ Not all integrations are external-system integrations. For cross-context orchest
 
 This contract keeps workflow decisions decoupled from evidence persistence internals while still enforcing evidence presence, usability, completeness, current-vs-superseded constraints, and cycle/target-scoped collection readiness constraints.
 
+Current Phase 3 completion details:
+
+- workflow submits an explicit readiness policy (`requiredReadinessLevel`, `requireAnyEvidenceForDecision`, currentness and collection-sufficiency flags)
+- evidence-management evaluates readiness using evidence-owned semantics only (completeness, active status, usability, supersession/currentness)
+- collection/set sufficiency is evaluated through evidence-owned set membership (`EvidenceItem.evidenceSetIds`) and workflow-owned set keys (`ReviewCycle.evidenceSetIds`), without embedding workflow state in evidence records
+
 ## Data Flow Pattern
 
 ```mermaid

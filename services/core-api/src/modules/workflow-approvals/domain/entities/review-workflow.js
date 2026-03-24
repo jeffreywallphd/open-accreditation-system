@@ -212,14 +212,9 @@ export class ReviewWorkflow {
   }
 
   #assertEvidenceForTransition(nextState, evidenceSummary) {
-    if (
-      (nextState === reviewWorkflowState.APPROVED || nextState === reviewWorkflowState.SUBMITTED) &&
-      this.evidenceItemIds.length > 0
-    ) {
+    if (nextState === reviewWorkflowState.APPROVED || nextState === reviewWorkflowState.SUBMITTED) {
       if (!evidenceSummary || evidenceSummary.isSufficient !== true) {
-        throw new ValidationError(
-          'ReviewWorkflow cannot be approved/submitted until referenced evidence is complete and active',
-        );
+        throw new ValidationError('ReviewWorkflow cannot be approved/submitted until evidence readiness is sufficient');
       }
     }
   }

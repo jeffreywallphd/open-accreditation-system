@@ -1,7 +1,7 @@
 {
   "meta": {
     "document": "Open Accreditation System entity model AI context",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "source_docs": [
       "README.md",
       "docs/architecture/README.md",
@@ -762,6 +762,7 @@
       "EvidenceItem.create starts with status=draft, isComplete=false, and no supersededByEvidenceItemId.",
       "EvidenceItem.evidenceLineageId identifies evidence lineage and defaults to the initial EvidenceItem.id for version 1.",
       "EvidenceItem.versionNumber starts at 1 and versionNumber>1 requires supersedesEvidenceItemId.",
+      "EvidenceItem.evidenceSetIds is a normalized, evidence-owned set-membership list used for workflow collection sufficiency evaluation.",
       "EvidenceItem must not embed artifact storage fields; storage metadata belongs to EvidenceArtifact child records.",
       "EvidenceArtifact.evidenceItemId must match the owning EvidenceItem.id.",
       "EvidenceItem lifecycle transitions are explicit: draft->(incomplete|active|archived), incomplete->(draft|archived), active->(incomplete|superseded|archived), superseded/archived terminal.",
@@ -796,7 +797,7 @@
       "ReviewWorkflow is unique per (reviewCycleId, targetType, targetId) to preserve deterministic cycle-target state retrieval.",
       "Workflow evidence integration is reference-based (evidenceItemIds/evidenceCollectionId) and does not embed workflow state in EvidenceItem.",
       "ReviewWorkflow.evidenceCollectionId must resolve to a ReviewCycle.evidenceSetIds key for the owning cycle.",
-      "Approval/submission transitions evaluate referenced evidence readiness through an explicit workflow policy over the evidence-management readiness contract, including presence/completeness/activity/usability, current-vs-superseded checks, and target-scoped collection sufficiency."
+      "Approval/submission transitions evaluate referenced evidence readiness through an explicit workflow policy over the evidence-management readiness contract, including presence/completeness/activity/usability, current-vs-superseded checks, decision-level evidence presence requirements, and target-scoped collection sufficiency constrained by EvidenceItem.evidenceSetIds."
     ],
     "crossContextReferenceRules": [
       "accreditation-frameworks validates local shape and ownership invariants for framework and cycle aggregates.",

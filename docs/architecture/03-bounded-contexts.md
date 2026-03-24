@@ -279,7 +279,9 @@ Defined contexts:
 - Transition history is sequence-backed and reconstruction-validated (`transition_sequence` persistence + aggregate checks for contiguous state-chain progression and terminal state consistency).
 - Evidence integration is reference-based (`evidenceItemIds`, `evidenceCollectionId`) and evaluated through an evidence-management application contract (`evaluateWorkflowEvidenceReadiness`) with explicit readiness policy input; workflow state is not embedded in `EvidenceItem`.
 - `ReviewWorkflow.evidenceCollectionId` must reference a collection/set key declared on `ReviewCycle.evidenceSetIds`, preserving cycle-level container ownership while delegating evidence readiness/usability evaluation to evidence-management.
+- `EvidenceItem.evidenceSetIds` is evidence-owned metadata used for collection/set readiness evaluation; workflow references set keys but does not own evidence membership semantics.
 - Approval/submission readiness policies now evaluate: referenced evidence presence/usability/currentness, superseded evidence exclusion, and target-scoped collection sufficiency (for example report-section scoped readiness) without duplicating evidence lifecycle rules in workflow.
+- Governed decision transitions (`approved`, `submitted`) require a positive readiness evaluation and require evidence presence via referenced items and/or collection-scoped usable evidence.
 - `ReviewWorkflow` is unique per (`reviewCycleId`, `targetType`, `targetId`) so cycle-target state retrieval remains deterministic.
 
 ### `narratives-reporting`
