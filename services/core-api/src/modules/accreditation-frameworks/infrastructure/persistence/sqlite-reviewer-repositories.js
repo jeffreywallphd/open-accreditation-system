@@ -140,13 +140,14 @@ export class SqliteReviewTeamRepository extends ReviewTeamRepository {
         this.database.run(
           `INSERT INTO accreditation_frameworks_review_team_memberships
            (id, review_team_id, person_id, reviewer_profile_id, role, responsibility_summary, is_primary, state,
-            effective_start_date, effective_end_date, supersedes_membership_id, superseded_by_membership_id, created_at, updated_at)
+            conflict_status, effective_start_date, effective_end_date, supersedes_membership_id, superseded_by_membership_id, created_at, updated_at)
            VALUES (@id, @reviewTeamId, @personId, @reviewerProfileId, @role, @responsibilitySummary, @isPrimary, @state,
+            @conflictStatus,
             @effectiveStartDate, @effectiveEndDate, @supersedesMembershipId, @supersededByMembershipId, @createdAt, @updatedAt)
            ON CONFLICT(id) DO UPDATE SET
              review_team_id=excluded.review_team_id, person_id=excluded.person_id, reviewer_profile_id=excluded.reviewer_profile_id,
              role=excluded.role, responsibility_summary=excluded.responsibility_summary, is_primary=excluded.is_primary,
-             state=excluded.state, effective_start_date=excluded.effective_start_date, effective_end_date=excluded.effective_end_date,
+             state=excluded.state, conflict_status=excluded.conflict_status, effective_start_date=excluded.effective_start_date, effective_end_date=excluded.effective_end_date,
              supersedes_membership_id=excluded.supersedes_membership_id, superseded_by_membership_id=excluded.superseded_by_membership_id,
              updated_at=excluded.updated_at`,
           {
@@ -158,6 +159,7 @@ export class SqliteReviewTeamRepository extends ReviewTeamRepository {
             responsibilitySummary: membership.responsibilitySummary,
             isPrimary: membership.isPrimary ? 1 : 0,
             state: membership.state,
+            conflictStatus: membership.conflictStatus,
             effectiveStartDate: membership.effectiveStartDate,
             effectiveEndDate: membership.effectiveEndDate,
             supersedesMembershipId: membership.supersedesMembershipId,
@@ -214,6 +216,7 @@ export class SqliteReviewTeamRepository extends ReviewTeamRepository {
         responsibilitySummary: item.responsibility_summary,
         isPrimary: item.is_primary === 1,
         state: item.state,
+        conflictStatus: item.conflict_status ?? 'none',
         effectiveStartDate: item.effective_start_date,
         effectiveEndDate: item.effective_end_date,
         supersedesMembershipId: item.supersedes_membership_id,

@@ -187,11 +187,23 @@ export class InMemoryScopeReferenceAdapter extends ScopeReferencePort {
     this.institutionIds = new Set(input.institutionIds ?? []);
     this.programIds = new Set(input.programIds ?? []);
     this.organizationUnitIds = new Set(input.organizationUnitIds ?? []);
+    this.personInstitutionIds = new Map(Object.entries(input.personInstitutionIds ?? {}));
+    this.programInstitutionIds = new Map(Object.entries(input.programInstitutionIds ?? {}));
+    this.organizationUnitInstitutionIds = new Map(Object.entries(input.organizationUnitInstitutionIds ?? {}));
   }
 
   async ensurePersonExists(personId) {
     if (!this.personIds.has(personId)) {
       throw new ValidationError(`Person not found: ${personId}`);
+    }
+  }
+
+  async ensurePersonInInstitution(personId, institutionId) {
+    await this.ensurePersonExists(personId);
+    await this.ensureInstitutionExists(institutionId);
+    const linkedInstitutionId = this.personInstitutionIds.get(personId);
+    if (linkedInstitutionId && linkedInstitutionId !== institutionId) {
+      throw new ValidationError('Person.institutionId must match target institution');
     }
   }
 
@@ -201,18 +213,28 @@ export class InMemoryScopeReferenceAdapter extends ScopeReferencePort {
     }
   }
 
-  async ensureProgramsExist(programIds) {
+  async ensureProgramsExistForInstitution(programIds, institutionId) {
+    await this.ensureInstitutionExists(institutionId);
     for (const id of programIds) {
       if (!this.programIds.has(id)) {
         throw new ValidationError(`Program not found: ${id}`);
       }
+      const linkedInstitutionId = this.programInstitutionIds.get(id);
+      if (linkedInstitutionId && linkedInstitutionId !== institutionId) {
+        throw new ValidationError('Program.institutionId must match AccreditationCycle.institutionId');
+      }
     }
   }
 
-  async ensureOrganizationUnitsExist(organizationUnitIds) {
+  async ensureOrganizationUnitsExistForInstitution(organizationUnitIds, institutionId) {
+    await this.ensureInstitutionExists(institutionId);
     for (const id of organizationUnitIds) {
       if (!this.organizationUnitIds.has(id)) {
         throw new ValidationError(`OrganizationUnit not found: ${id}`);
+      }
+      const linkedInstitutionId = this.organizationUnitInstitutionIds.get(id);
+      if (linkedInstitutionId && linkedInstitutionId !== institutionId) {
+        throw new ValidationError('OrganizationUnit.institutionId must match AccreditationCycle.institutionId');
       }
     }
   }

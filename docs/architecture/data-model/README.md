@@ -959,7 +959,7 @@ This section is the implementation contract for the first domain slice under `se
 - `organization-registry` remains the source of truth for institution and organization-unit existence; `accreditation-frameworks` stores only stable IDs.
 - `curriculum-mapping` remains the source of truth for program existence; `accreditation-frameworks` stores only stable IDs.
 - Existence validation for program/organization references must happen through published application ports, never by direct table-level coupling.
-- Current `core-api` implementation validates institution/person/organization references through an `organization-registry` adapter; program validation remains port-driven and is enabled when a `curriculum-mapping` adapter is configured.
+- Current `core-api` implementation validates institution/person/organization references through published `organization-registry` application services and validates program references through published `curriculum-mapping` application services.
 - `evidence-management`, `workflow-approvals`, and `assessment-improvement` may reference IDs for traceability but must not mutate `accreditation-frameworks` state.
 
 ## Key cross-context relationships

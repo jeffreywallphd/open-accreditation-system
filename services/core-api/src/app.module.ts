@@ -8,9 +8,10 @@ import { DatabaseLifecycle } from './infrastructure/persistence/database.lifecyc
 import { OrganizationRegistryModule } from './modules/organization-registry/organization-registry.module.js';
 import { IdentityAccessModule } from './modules/identity-access/identity-access.module.js';
 import { AccreditationFrameworksModule } from './modules/accreditation-frameworks/accreditation-frameworks.module.js';
+import { CurriculumMappingModule } from './modules/curriculum-mapping/curriculum-mapping.module.js';
 
 @Module({
-  imports: [OrganizationRegistryModule, IdentityAccessModule, AccreditationFrameworksModule],
+  imports: [OrganizationRegistryModule, IdentityAccessModule, CurriculumMappingModule, AccreditationFrameworksModule],
   providers: [
     {
       provide: APP_CONFIG,

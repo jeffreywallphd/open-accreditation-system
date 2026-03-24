@@ -3,15 +3,19 @@ export class ScopeReferencePort {
     throw new Error('ScopeReferencePort.ensurePersonExists not implemented');
   }
 
+  async ensurePersonInInstitution(_personId, _institutionId) {
+    throw new Error('ScopeReferencePort.ensurePersonInInstitution not implemented');
+  }
+
   async ensureInstitutionExists(_institutionId) {
     throw new Error('ScopeReferencePort.ensureInstitutionExists not implemented');
   }
 
-  async ensureProgramsExist(_programIds) {
-    throw new Error('ScopeReferencePort.ensureProgramsExist not implemented');
+  async ensureProgramsExistForInstitution(_programIds, _institutionId) {
+    throw new Error('ScopeReferencePort.ensureProgramsExistForInstitution not implemented');
   }
 
-  async ensureOrganizationUnitsExist(_organizationUnitIds) {
-    throw new Error('ScopeReferencePort.ensureOrganizationUnitsExist not implemented');
+  async ensureOrganizationUnitsExistForInstitution(_organizationUnitIds, _institutionId) {
+    throw new Error('ScopeReferencePort.ensureOrganizationUnitsExistForInstitution not implemented');
   }
 }

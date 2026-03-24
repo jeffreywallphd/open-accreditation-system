@@ -26,10 +26,13 @@ function createService() {
     reviewerProfiles: new InMemoryReviewerProfileRepository(),
     reviewTeams: new InMemoryReviewTeamRepository(),
     scopeReferences: new InMemoryScopeReferenceAdapter({
-      personIds: ['person_1'],
+      personIds: ['person_1', 'person_2'],
       institutionIds: ['inst_1'],
       programIds: ['prog_1', 'prog_2'],
       organizationUnitIds: ['org_1', 'org_2'],
+      personInstitutionIds: { person_1: 'inst_1', person_2: 'inst_1' },
+      programInstitutionIds: { prog_1: 'inst_1', prog_2: 'inst_1' },
+      organizationUnitInstitutionIds: { org_1: 'inst_1', org_2: 'inst_1' },
     }),
   });
 }
@@ -355,6 +358,11 @@ export async function runTests(): Promise<void> {
     institutionId: 'inst_1',
     reviewerType: 'peer-reviewer',
   });
+  const secondReviewerProfile = await service.createReviewerProfile({
+    personId: 'person_2',
+    institutionId: 'inst_1',
+    reviewerType: 'peer-reviewer',
+  });
 
   const reviewTeam = await service.createReviewTeam({
     accreditationCycleId: cycle.id,
@@ -376,6 +384,29 @@ export async function runTests(): Promise<void> {
         personId: 'person_1',
         reviewerProfileId: reviewerProfile.id,
         role: 'observer',
+      }),
+    ValidationError,
+  );
+
+  const supersededTeam = await service.addReviewTeamMembership(reviewTeam.id, {
+    personId: 'person_1',
+    reviewerProfileId: reviewerProfile.id,
+    role: 'chair',
+    isPrimary: true,
+    effectiveStartDate: '2026-06-01',
+    supersedesMembershipId: teamWithMembership.memberships[0].id,
+  });
+  assert.equal(supersededTeam.memberships.length, 2);
+  assert.equal(supersededTeam.memberships[0].state, 'superseded');
+
+  await assert.rejects(
+    () =>
+      service.addReviewTeamMembership(reviewTeam.id, {
+        personId: 'person_2',
+        reviewerProfileId: secondReviewerProfile.id,
+        role: 'advisor',
+        state: 'active',
+        conflictStatus: 'confirmed',
       }),
     ValidationError,
   );

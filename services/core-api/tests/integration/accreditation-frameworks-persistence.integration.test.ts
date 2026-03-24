@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createCoreApiApp } from '../../src/bootstrap/create-core-api-app.js';
 import { ORG_SERVICE } from '../../src/modules/organization-registry/organization-registry.module.js';
 import { AFR_SERVICE } from '../../src/modules/accreditation-frameworks/accreditation-frameworks.module.js';
+import { CURR_SERVICE } from '../../src/modules/curriculum-mapping/curriculum-mapping.module.js';
 
 function createTempDbPath(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'core-api-afr-persistence-'));
@@ -22,6 +23,7 @@ export async function runTests(): Promise<void> {
   try {
     const org = app.get(ORG_SERVICE);
     const afr = app.get(AFR_SERVICE);
+    const curriculum = app.get(CURR_SERVICE);
 
     const institution = await org.createInstitution({ name: 'AFR Persistence University', code: 'AFRPU' });
     const person = await org.createPerson({
@@ -33,6 +35,11 @@ export async function runTests(): Promise<void> {
       institutionId: institution.id,
       name: 'College of Business',
       unitType: 'college',
+    });
+    const program = await curriculum.createProgram({
+      institutionId: institution.id,
+      name: 'MBA',
+      code: 'MBA',
     });
 
     const accreditor = await afr.createAccreditor({ code: 'AACSB', name: 'AACSB' });
@@ -113,10 +120,21 @@ export async function runTests(): Promise<void> {
       isPrimary: true,
     });
     assert.equal(teamWithMembership.memberships.length, 1);
+    const supersededMembership = await afr.addReviewTeamMembership(team.id, {
+      personId: person.id,
+      reviewerProfileId: profile.id,
+      role: 'chair',
+      isPrimary: true,
+      effectiveStartDate: '2026-07-01',
+      supersedesMembershipId: teamWithMembership.memberships[0].id,
+    });
+    assert.equal(supersededMembership.memberships.length, 2);
+    assert.equal(supersededMembership.memberships[0].state, 'superseded');
 
     const withScope = await afr.addAccreditationScope(cycle.id, {
       name: 'Business Unit Scope',
-      scopeType: 'organization-unit',
+      scopeType: 'institutional',
+      programIds: [program.id],
       organizationUnitIds: [unit.id],
       effectiveStartDate: '2026-01-01',
       effectiveEndDate: '2026-12-31',
@@ -168,7 +186,7 @@ export async function runTests(): Promise<void> {
     assert.ok(restoredTeam);
     assert.equal(restoredCycle?.decisionRecords.length, 2);
     assert.equal(restoredCycle?.decisionRecords[0].id, initialDecisionId);
-    assert.equal(restoredTeam?.memberships.length, 1);
+    assert.equal(restoredTeam?.memberships.length, 2);
   } finally {
     await secondApp.close();
   }

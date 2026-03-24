@@ -160,6 +160,8 @@ const addReviewTeamMembershipSchema = z.object({
   role: z.string().min(1),
   responsibilitySummary: z.string().optional(),
   isPrimary: z.boolean().optional(),
+  conflictStatus: z.string().optional(),
+  state: z.string().optional(),
   effectiveStartDate: z.string().optional(),
   effectiveEndDate: z.string().optional(),
   supersedesMembershipId: z.string().optional(),

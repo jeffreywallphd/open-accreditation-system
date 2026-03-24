@@ -30,6 +30,16 @@ export async function runTests(): Promise<void> {
       },
     });
     const person = personResponse.json().data;
+    const secondPersonResponse = await app.inject({
+      method: 'POST',
+      url: '/organization-registry/people',
+      payload: {
+        institutionId: institution.id,
+        displayName: 'Reviewer Http Two',
+        primaryEmail: 'reviewer.http.two@afrhu.edu',
+      },
+    });
+    const secondPerson = secondPersonResponse.json().data;
 
     const unitResponse = await app.inject({
       method: 'POST',
@@ -41,6 +51,17 @@ export async function runTests(): Promise<void> {
       },
     });
     const unit = unitResponse.json().data;
+    const programResponse = await app.inject({
+      method: 'POST',
+      url: '/curriculum-mapping/programs',
+      payload: {
+        institutionId: institution.id,
+        name: 'BSE',
+        code: 'BSE',
+      },
+    });
+    assert.equal(programResponse.statusCode, 201);
+    const program = programResponse.json().data;
 
     const accreditorResponse = await app.inject({
       method: 'POST',
@@ -153,6 +174,17 @@ export async function runTests(): Promise<void> {
     });
     assert.equal(reviewerProfileResponse.statusCode, 201);
     const reviewerProfile = reviewerProfileResponse.json().data;
+    const secondReviewerProfileResponse = await app.inject({
+      method: 'POST',
+      url: '/accreditation-frameworks/reviewer-profiles',
+      payload: {
+        personId: secondPerson.id,
+        institutionId: institution.id,
+        reviewerType: 'peer-reviewer',
+      },
+    });
+    assert.equal(secondReviewerProfileResponse.statusCode, 201);
+    const secondReviewerProfile = secondReviewerProfileResponse.json().data;
 
     const teamResponse = await app.inject({
       method: 'POST',
@@ -177,13 +209,42 @@ export async function runTests(): Promise<void> {
       },
     });
     assert.equal(membershipResponse.statusCode, 201);
+    const membership = membershipResponse.json().data.memberships[0];
+
+    const membershipSupersedeResponse = await app.inject({
+      method: 'POST',
+      url: `/accreditation-frameworks/review-teams/${team.id}/memberships`,
+      payload: {
+        personId: person.id,
+        reviewerProfileId: reviewerProfile.id,
+        role: 'chair',
+        isPrimary: true,
+        effectiveStartDate: '2026-06-01',
+        supersedesMembershipId: membership.id,
+      },
+    });
+    assert.equal(membershipSupersedeResponse.statusCode, 201);
+
+    const invalidConflictMembershipResponse = await app.inject({
+      method: 'POST',
+      url: `/accreditation-frameworks/review-teams/${team.id}/memberships`,
+      payload: {
+        personId: secondPerson.id,
+        reviewerProfileId: secondReviewerProfile.id,
+        role: 'observer',
+        conflictStatus: 'confirmed',
+        state: 'active',
+      },
+    });
+    assert.equal(invalidConflictMembershipResponse.statusCode, 400);
 
     const scopeResponse = await app.inject({
       method: 'POST',
       url: `/accreditation-frameworks/cycles/${cycle.id}/scopes`,
       payload: {
         name: 'Engineering School',
-        scopeType: 'organization-unit',
+        scopeType: 'program-and-unit',
+        programIds: [program.id],
         organizationUnitIds: [unit.id],
         effectiveStartDate: '2026-01-01',
         effectiveEndDate: '2026-12-31',
