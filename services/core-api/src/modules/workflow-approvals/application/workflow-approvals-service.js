@@ -170,6 +170,7 @@ export class WorkflowApprovalsService {
       evidenceItemIds: workflow.evidenceItemIds,
       readinessPolicy: {
         requiredReadinessLevel: 'present',
+        requireAnyEvidenceForDecision: false,
         requireCurrentReferencedEvidence: false,
         minimumReferencedUsableEvidenceCount: 0,
         requireCollectionScopedUsableEvidence: false,
@@ -206,10 +207,13 @@ export class WorkflowApprovalsService {
         evidenceCollectionId: workflow.evidenceCollectionId ?? null,
         collectionContextStatus: workflow.evidenceCollectionId ? 'not-evaluated' : 'not-applicable',
         collectionUsableEvidenceCount: 0,
+        hasAnyEvidence: workflow.evidenceItemIds.length > 0,
+        anyEvidenceRequirementSatisfied: true,
         collectionRequirementSatisfied: true,
         referencedEvidenceRequirementSatisfied: true,
         readinessPolicy: {
           requiredReadinessLevel: 'usable',
+          requireAnyEvidenceForDecision: false,
           requireCurrentReferencedEvidence: true,
           minimumReferencedUsableEvidenceCount: workflow.evidenceItemIds.length,
           requireCollectionScopedUsableEvidence: false,

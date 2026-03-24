@@ -3,6 +3,8 @@ import { EvidenceManagementService } from '../../src/modules/evidence-management
 import { WorkflowEvidenceReadinessService } from '../../src/modules/evidence-management/application/workflow-evidence-readiness-service.js';
 import { InMemoryEvidenceItemRepository } from '../../src/modules/evidence-management/infrastructure/persistence/in-memory-evidence-management-repositories.js';
 import {
+  evidenceReferenceRelationshipType,
+  evidenceReferenceTargetType,
   evidenceSourceType,
   evidenceType,
 } from '../../src/modules/evidence-management/domain/value-objects/evidence-classifications.js';
@@ -83,6 +85,7 @@ export async function runTests(): Promise<void> {
     title: 'Cycle Evidence 1',
     description: 'Initial evidence package',
     reviewCycleId: cycle.id,
+    evidenceSetIds: ['collection_1'],
     evidenceType: evidenceType.NARRATIVE,
     sourceType: evidenceSourceType.MANUAL,
   });
@@ -151,6 +154,29 @@ export async function runTests(): Promise<void> {
       }),
     ValidationError,
     'workflow creation should reject evidenceCollectionId not declared by the ReviewCycle',
+  );
+
+  const evidenceFreeWorkflow = await createReviewWorkflow.execute({
+    reviewCycleId: cycle.id,
+    targetType: 'report-section',
+    targetId: 'section_evidence_free',
+    reportSectionId: 'section_evidence_free',
+    evidenceItemIds: [],
+  });
+  await transitionReviewWorkflowState.execute(
+    evidenceFreeWorkflow.id,
+    reviewWorkflowState.IN_REVIEW,
+    workflowActorRole.FACULTY,
+  );
+  await assert.rejects(
+    () =>
+      transitionReviewWorkflowState.execute(
+        evidenceFreeWorkflow.id,
+        reviewWorkflowState.APPROVED,
+        workflowActorRole.REVIEWER,
+      ),
+    ValidationError,
+    'approval should fail when no evidence is provided for governed decision transitions',
   );
 
   const workflow = await createReviewWorkflow.execute({
@@ -255,6 +281,7 @@ export async function runTests(): Promise<void> {
     title: 'Superseded predecessor',
     description: 'Initial evidence version to be superseded',
     reviewCycleId: cycle.id,
+    evidenceSetIds: ['collection_1'],
     evidenceType: evidenceType.NARRATIVE,
     sourceType: evidenceSourceType.MANUAL,
   });
@@ -266,6 +293,7 @@ export async function runTests(): Promise<void> {
     title: 'Superseding evidence version',
     description: 'Current replacement version',
     reviewCycleId: cycle.id,
+    evidenceSetIds: ['collection_1'],
   });
   await evidenceManagement.markEvidenceComplete(successor.id);
   await evidenceManagement.activateEvidenceItem(successor.id);
@@ -293,5 +321,46 @@ export async function runTests(): Promise<void> {
     ValidationError,
     'approval should fail when referenced evidence is superseded/non-current',
   );
+
+  const collectionScopedEvidence = await evidenceManagement.createEvidenceItem({
+    id: 'ev_collection_1',
+    institutionId: institution.id,
+    title: 'Collection-scoped section evidence',
+    description: 'Evidence linked to section and collection for collection-only readiness checks.',
+    reviewCycleId: cycle.id,
+    evidenceSetIds: ['collection_1'],
+    evidenceType: evidenceType.NARRATIVE,
+    sourceType: evidenceSourceType.MANUAL,
+  });
+  await evidenceManagement.addEvidenceReference(collectionScopedEvidence.id, {
+    targetType: evidenceReferenceTargetType.NARRATIVE_SECTION,
+    targetEntityId: 'section_collection_only_ready',
+    relationshipType: evidenceReferenceRelationshipType.INCLUDED_IN,
+    anchorPath: 'section://collection-only-ready',
+  });
+  await evidenceManagement.markEvidenceComplete(collectionScopedEvidence.id);
+  await evidenceManagement.activateEvidenceItem(collectionScopedEvidence.id);
+
+  const collectionScopedWorkflow = await createReviewWorkflow.execute({
+    reviewCycleId: cycle.id,
+    targetType: 'report-section',
+    targetId: 'section_collection_only_ready',
+    reportSectionId: 'section_collection_only_ready',
+    evidenceCollectionId: 'collection_1',
+    evidenceItemIds: [],
+  });
+  await transitionReviewWorkflowState.execute(
+    collectionScopedWorkflow.id,
+    reviewWorkflowState.IN_REVIEW,
+    workflowActorRole.FACULTY,
+  );
+  const collectionApproved = await transitionReviewWorkflowState.execute(
+    collectionScopedWorkflow.id,
+    reviewWorkflowState.APPROVED,
+    workflowActorRole.REVIEWER,
+  );
+  assert.equal(collectionApproved.transitionHistory[1].evidenceSummary.collectionRequirementSatisfied, true);
+  assert.equal(collectionApproved.transitionHistory[1].evidenceSummary.collectionUsableEvidenceCount, 1);
+  assert.equal(collectionApproved.transitionHistory[1].evidenceSummary.anyEvidenceRequirementSatisfied, true);
 }
 

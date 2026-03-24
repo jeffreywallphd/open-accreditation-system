@@ -1067,10 +1067,12 @@ Implementation note (current `core-api` slice): the `workflow-approvals` module 
 - `ReviewWorkflow` is unique per cycle-target tuple (`reviewCycleId`, `targetType`, `targetId`) so workflow state retrieval by cycle/report target is deterministic.
 - Workflow evidence integration remains reference-based (`evidenceItemIds`, `evidenceCollectionId`) and does not embed workflow state in `EvidenceItem`.
 - `ReviewWorkflow.evidenceCollectionId` must map to a `ReviewCycle.evidenceSetIds` entry so collection/set membership remains cycle-governed.
+- `EvidenceItem.evidenceSetIds` stores evidence-owned set membership used by readiness evaluation for collection-scoped sufficiency.
 - Approval/submission transitions evaluate referenced evidence readiness through the evidence-management application contract (`evaluateWorkflowEvidenceReadiness`) using explicit workflow readiness policy:
+  - explicit decision-level requirement for evidence presence (`requireAnyEvidenceForDecision`)
   - referenced evidence presence + completeness + active/usability status
   - currentness (non-superseded) where required for governed transitions
-  - target-scoped collection sufficiency for the owning cycle/report target context
+  - target-scoped collection sufficiency for the owning cycle/report target context, constrained by `evidenceCollectionId` + `EvidenceItem.evidenceSetIds`
   - evidence sufficiency summary persisted on transition history records for inspection/audit
 
 ## Implementation-ready curriculum linkage invariants (Epic 2 Phase 0 groundwork)

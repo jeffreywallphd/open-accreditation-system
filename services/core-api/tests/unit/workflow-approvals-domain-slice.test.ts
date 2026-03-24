@@ -163,6 +163,7 @@ export async function runTests(): Promise<void> {
       evidenceItemIds: ['evidence_1'],
     },
   );
+  assert.equal(submissionPolicy.requireAnyEvidenceForDecision, true);
   assert.equal(submissionPolicy.requireCollectionScopedUsableEvidence, false);
 
   const collectionOnlySubmissionPolicy = buildEvidenceReadinessPolicyForTransition(
@@ -176,5 +177,22 @@ export async function runTests(): Promise<void> {
   );
   assert.equal(collectionOnlySubmissionPolicy.requireCollectionScopedUsableEvidence, true);
   assert.equal(collectionOnlySubmissionPolicy.minimumCollectionUsableEvidenceCount, 1);
+  assert.equal(collectionOnlySubmissionPolicy.requireAnyEvidenceForDecision, true);
+
+  const collectionOnlyWorkflow = ReviewWorkflow.create({
+    reviewCycleId: 'cycle_1',
+    institutionId: 'inst_1',
+    targetType: 'report-section',
+    targetId: 'section_collection_only',
+    reportSectionId: 'section_collection_only',
+    evidenceCollectionId: 'collection_1',
+    evidenceItemIds: [],
+  });
+  collectionOnlyWorkflow.transitionTo(reviewWorkflowState.IN_REVIEW, workflowActorRole.FACULTY);
+  assert.throws(
+    () => collectionOnlyWorkflow.transitionTo(reviewWorkflowState.APPROVED, workflowActorRole.REVIEWER),
+    ValidationError,
+    'collection-only workflow should still require evidence readiness summary for approval',
+  );
 }
 
