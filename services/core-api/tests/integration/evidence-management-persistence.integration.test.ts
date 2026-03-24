@@ -289,10 +289,19 @@ export async function runTests(): Promise<void> {
 
     const cycleReadiness = await evidenceService.getEvidenceLineageCycleReadiness(evidenceLineageId);
     assert.equal(cycleReadiness.versionCount, 2);
+    assert.equal(cycleReadiness.createdInReviewCycleId, null);
+    assert.equal(cycleReadiness.createdInReportingPeriodId, 'period_2026');
+    assert.equal(cycleReadiness.hasCrossCycleReuse, true);
+    assert.equal(cycleReadiness.hasCrossCycleSupersession, true);
+    assert.equal(cycleReadiness.hasWithinCycleSupersession, false);
+    assert.equal(cycleReadiness.crossCycleSupersessionCount, 1);
+    assert.equal(cycleReadiness.withinCycleSupersessionCount, 0);
     assert.equal(cycleReadiness.reviewCycleIds.length, 1);
     assert.equal(cycleReadiness.reviewCycleIds[0], 'cycle_2027');
     assert.equal(cycleReadiness.reportingPeriodIds.length, 1);
     assert.equal(cycleReadiness.reportingPeriodIds[0], 'period_2026');
+    assert.equal(cycleReadiness.versions[0].supersessionScope, 'none');
+    assert.equal(cycleReadiness.versions[1].supersessionScope, 'cross-cycle');
 
     await assert.rejects(
       () =>

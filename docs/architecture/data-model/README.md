@@ -1009,11 +1009,14 @@ Implementation note (current `core-api` slice): the `evidence-management` module
 - `EvidenceItem.status=incomplete` requires `isComplete=false`.
 - `EvidenceItem.status=superseded` requires `supersededByEvidenceItemId`.
 - Lineage-consistent supersession requires predecessor and successor to share `evidenceLineageId` and preserve direct successor linkage (`successor.supersedesEvidenceItemId = predecessor.id`).
+- Explicit supersession orchestration additionally requires `successor.versionNumber = predecessor.versionNumber + 1` to prevent non-sequential lineage jumps.
 - Artifact registration is allowed only while `status=draft` or `status=incomplete`; `active`, `superseded`, and `archived` reject artifact changes in this phase.
 - `EvidenceItem.status=superseded` and `EvidenceItem.status=archived` are terminal for lifecycle transitions in this phase.
 - Superseding an evidence item requires successor existence and same-institution alignment (application orchestration invariant).
+- Superseding an evidence item through application orchestration requires lineage-consistent successor identity (same lineage, predecessor linkage, and sequential version increment).
 - `EvidenceArtifact` persistence is append-only in this phase (existing artifact metadata cannot be silently rewritten or removed in-place).
 - `EvidenceReference` is an owned `EvidenceItem` child and append-only in persistence (existing reference metadata cannot be silently rewritten or removed in-place).
+- Repository save boundaries rehydrate/validate aggregate snapshots prior to persistence so mutated in-memory aggregates cannot bypass domain invariants.
 - `EvidenceReference.targetType` is constrained in implementation to `criterion`, `criterion-element`, `learning-outcome`, and `narrative-section`.
 - `EvidenceReference` target type admissibility is validated centrally in `evidence-management` and then resolved through target-owning bounded-context application contracts (for example, framework/curriculum target resolvers).
 - `EvidenceReference` uses governed normalization for linkage annotations:
@@ -1026,6 +1029,7 @@ Implementation note (current `core-api` slice): the `evidence-management` module
   - linkage-context retrieval (evidence with matching reference subset)
   - governed usability filters (`isUsable`, `hasAvailableArtifact`, `requiresArtifactForActivation`)
   - cycle/reporting anchors (`reviewCycleId`, `reportingPeriodId`) and lineage cycle-readiness summaries for cross-cycle reuse/supersession analysis.
+  - cycle-readiness summaries classify within-cycle vs cross-cycle supersession transitions for cross-cycle evolution tracking.
 
 ## Implementation-ready curriculum linkage invariants (Epic 2 Phase 0 groundwork)
 

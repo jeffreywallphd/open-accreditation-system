@@ -188,19 +188,21 @@ Defined contexts:
 - Artifact registration is limited to editable statuses (`draft`, `incomplete`) in this phase; `active`, `superseded`, and `archived` do not allow artifact mutation.
 - `superseded` and `archived` statuses are terminal for lifecycle transitions in this phase.
 - Supersession orchestration validates successor existence and institution alignment before calling aggregate transitions.
+- Supersession orchestration now enforces lineage-consistent successor linkage (`same evidenceLineageId`, `successor.supersedesEvidenceItemId = predecessor.id`, and `successor.versionNumber = predecessor.versionNumber + 1`).
 - `EvidenceItem` now carries version-lineage semantics (`evidenceLineageId`, `versionNumber`, `supersedesEvidenceItemId`, `supersededByEvidenceItemId`) so superseding revisions can preserve historical records.
 - Application-layer use cases include explicit superseding-version creation (`createSupersedingEvidenceVersion`) in addition to governed status transitions.
 - `EvidenceReference` is implemented as an append-only owned child on `EvidenceItem`, with accreditation-centered target types (`criterion`, `criterion-element`, `learning-outcome`, `narrative-section`) and governed relationship semantics.
 - `EvidenceReference` target admissibility is validated centrally in the evidence-management application layer through target-type validator contracts, with target existence checks delegated to owning bounded-context application interfaces.
 - `EvidenceReference` input normalization is governed (`targetType`, `targetEntityId`, `relationshipType`, `rationale`, `anchorPath`) with target-specific anchor rules (for example, `narrative-section` requires `anchorPath`).
 - Persistence and repository boundaries enforce append-only behavior for artifacts and references and reject in-place mutation of evidence identity/version-anchor fields.
+- Repository save paths rehydrate/validate aggregate snapshots before persistence so invalid in-memory mutation cannot bypass domain invariants.
 - Application-layer retrieval now supports lineage/current-version queries and reference-target queries (criterion/subcriterion/outcome retrieval foundations) without introducing a reporting-engine abstraction.
 - Application-layer retrieval now includes explicit query/use-case foundations for:
   - reference-target retrieval (`criterion`, `criterion-element`, `learning-outcome`, `narrative-section`)
   - `current` vs `historical` lineage-aware retrieval
   - linkage-context projection (evidence + matching reference subset)
   - governed usability filters (`isUsable`, `hasAvailableArtifact`, `requiresArtifactForActivation`)
-  - cycle-anchor filters (`reviewCycleId`, `reportingPeriodId`) and lineage cycle-readiness summaries for cross-cycle evolution.
+  - cycle-anchor filters (`reviewCycleId`, `reportingPeriodId`) and lineage cycle-readiness summaries for cross-cycle evolution, including within-cycle vs cross-cycle supersession classification.
 
 ### `assessment-improvement`
 
