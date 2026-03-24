@@ -276,7 +276,9 @@ Defined contexts:
   - `approved`
   - `submitted`
 - Workflow transitions are governed by explicit domain transition maps and role policy (`faculty`, `reviewer`, `admin`) with append-only transition history.
-- Evidence integration is reference-based (`evidenceItemIds`, `evidenceCollectionId`) and evaluated through application-layer evidence queries; workflow state is not embedded in `EvidenceItem`.
+- Transition history is sequence-backed and reconstruction-validated (`transition_sequence` persistence + aggregate checks for contiguous state-chain progression and terminal state consistency).
+- Evidence integration is reference-based (`evidenceItemIds`, `evidenceCollectionId`) and evaluated through an evidence-management application contract (`evaluateWorkflowEvidenceReadiness`); workflow state is not embedded in `EvidenceItem`.
+- `ReviewWorkflow.evidenceCollectionId` must reference a collection/set key declared on `ReviewCycle.evidenceSetIds`, preserving cycle-level container ownership while delegating evidence readiness/usability evaluation to evidence-management.
 
 ### `narratives-reporting`
 

@@ -57,6 +57,7 @@ function toReviewWorkflowSnapshot(workflow) {
     transitionHistory: (workflow.transitionHistory ?? []).map((item) => ({
       id: item.id,
       workflowId: item.workflowId,
+      sequence: item.sequence,
       fromState: item.fromState,
       toState: item.toState,
       actorRole: item.actorRole,
@@ -260,7 +261,7 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
       );
 
       const persistedRows = this.database.all(
-        `SELECT * FROM workflow_review_workflow_transitions WHERE workflow_id = @workflowId ORDER BY created_at ASC`,
+        `SELECT * FROM workflow_review_workflow_transitions WHERE workflow_id = @workflowId ORDER BY transition_sequence ASC`,
         { workflowId: validated.id },
       );
       const persistedById = new Map(persistedRows.map((row) => [row.id, row]));
@@ -273,12 +274,13 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
         }
         this.database.run(
           `INSERT INTO workflow_review_workflow_transitions
-             (id, workflow_id, from_state, to_state, actor_role, reason, evidence_summary_json, transitioned_at, created_at)
+             (id, workflow_id, transition_sequence, from_state, to_state, actor_role, reason, evidence_summary_json, transitioned_at, created_at)
            VALUES
-             (@id, @workflowId, @fromState, @toState, @actorRole, @reason, @evidenceSummaryJson, @transitionedAt, @createdAt)`,
+             (@id, @workflowId, @sequence, @fromState, @toState, @actorRole, @reason, @evidenceSummaryJson, @transitionedAt, @createdAt)`,
           {
             id: entry.id,
             workflowId: entry.workflowId,
+            sequence: entry.sequence,
             fromState: entry.fromState,
             toState: entry.toState,
             actorRole: entry.actorRole,
@@ -324,7 +326,7 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
     const transitionRows = this.database.all(
       `SELECT * FROM workflow_review_workflow_transitions
        WHERE workflow_id = @workflowId
-       ORDER BY created_at ASC`,
+       ORDER BY transition_sequence ASC`,
       { workflowId: row.id },
     );
     return ReviewWorkflow.rehydrate({
@@ -339,9 +341,10 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
       state: row.state,
       transitionHistory: transitionRows.map(
         (item) =>
-          new WorkflowTransitionRecord({
+           new WorkflowTransitionRecord({
             id: item.id,
             workflowId: item.workflow_id,
+            sequence: item.transition_sequence,
             fromState: item.from_state,
             toState: item.to_state,
             actorRole: item.actor_role,
@@ -387,6 +390,7 @@ export class SqliteReviewWorkflowRepository extends ReviewWorkflowRepository {
     const persistedSummary = persistedRow.evidence_summary_json ? JSON.parse(persistedRow.evidence_summary_json) : null;
     if (
       current.workflowId !== persistedRow.workflow_id ||
+      current.sequence !== persistedRow.transition_sequence ||
       current.fromState !== persistedRow.from_state ||
       current.toState !== persistedRow.to_state ||
       current.actorRole !== persistedRow.actor_role ||

@@ -74,6 +74,7 @@ export async function runTests(): Promise<void> {
       targetType: 'report-section',
       targetId: 'section_3_2',
       reportSectionId: 'section_3_2',
+      evidenceCollectionId: 'evidence_set_wp_1',
       evidenceItemIds: [evidenceItem.id],
     });
     reviewWorkflowId = createdWorkflow.id;
@@ -98,6 +99,105 @@ export async function runTests(): Promise<void> {
       { reason: 'Submitted to institutional governance queue' },
     );
     assert.equal(submitted.transitionHistory.length, 3);
+    assert.deepEqual(
+      submitted.transitionHistory.map((entry) => entry.sequence),
+      [1, 2, 3],
+    );
+    assert.equal(submitted.transitionHistory[2].evidenceSummary.collectionRequirementSatisfied, true);
+
+    await assert.rejects(
+      () =>
+        workflow.createWorkflowInstance({
+          reviewCycleId: cycle.id,
+          targetType: 'report-section',
+          targetId: 'section_missing_evidence',
+          evidenceItemIds: ['ev_missing'],
+        }),
+      ValidationError,
+      'missing referenced evidence should be rejected during workflow creation',
+    );
+
+    await assert.rejects(
+      () =>
+        workflow.createWorkflowInstance({
+          reviewCycleId: cycle.id,
+          targetType: 'report-section',
+          targetId: 'section_unknown_collection',
+          evidenceCollectionId: 'set_unknown',
+        }),
+      ValidationError,
+      'workflow evidenceCollectionId must be declared by the owning review cycle',
+    );
+
+    const incompleteEvidence = await evidence.createEvidenceItem({
+      institutionId,
+      title: 'Incomplete Evidence',
+      description: 'Incomplete evidence for negative transition assertions.',
+      reviewCycleId: cycle.id,
+      evidenceType: evidenceType.NARRATIVE,
+      sourceType: evidenceSourceType.MANUAL,
+    });
+    const incompleteWorkflow = await workflow.createWorkflowInstance({
+      reviewCycleId: cycle.id,
+      targetType: 'report-section',
+      targetId: 'section_4_1',
+      reportSectionId: 'section_4_1',
+      evidenceCollectionId: 'evidence_set_wp_1',
+      evidenceItemIds: [incompleteEvidence.id],
+    });
+    await workflow.transitionWorkflowState(
+      incompleteWorkflow.id,
+      reviewWorkflowState.IN_REVIEW,
+      workflowActorRole.FACULTY,
+      { reason: 'Send incomplete package for review' },
+    );
+    await assert.rejects(
+      () =>
+        workflow.transitionWorkflowState(
+          incompleteWorkflow.id,
+          reviewWorkflowState.APPROVED,
+          workflowActorRole.REVIEWER,
+          { reason: 'Should fail due to incomplete/unusable evidence' },
+        ),
+      ValidationError,
+      'approval should fail for incomplete evidence',
+    );
+
+    const presentButUnusableEvidence = await evidence.createEvidenceItem({
+      institutionId,
+      title: 'Present But Unusable Evidence',
+      description: 'Evidence is complete but still not activated.',
+      reviewCycleId: cycle.id,
+      evidenceType: evidenceType.NARRATIVE,
+      sourceType: evidenceSourceType.MANUAL,
+    });
+    await evidence.markEvidenceComplete(presentButUnusableEvidence.id);
+
+    const presentButUnusableWorkflow = await workflow.createWorkflowInstance({
+      reviewCycleId: cycle.id,
+      targetType: 'report-section',
+      targetId: 'section_4_2',
+      reportSectionId: 'section_4_2',
+      evidenceCollectionId: 'evidence_set_wp_1',
+      evidenceItemIds: [presentButUnusableEvidence.id],
+    });
+    await workflow.transitionWorkflowState(
+      presentButUnusableWorkflow.id,
+      reviewWorkflowState.IN_REVIEW,
+      workflowActorRole.FACULTY,
+      { reason: 'Send complete but inactive evidence for review' },
+    );
+    await assert.rejects(
+      () =>
+        workflow.transitionWorkflowState(
+          presentButUnusableWorkflow.id,
+          reviewWorkflowState.APPROVED,
+          workflowActorRole.REVIEWER,
+          { reason: 'Should fail due to inactive/unusable evidence' },
+        ),
+      ValidationError,
+      'approval should fail for present-but-unusable evidence',
+    );
 
     const duplicateScope = await workflow.createReviewCycle({
       institutionId,
@@ -130,9 +230,18 @@ export async function runTests(): Promise<void> {
     const restoredWorkflow = await workflow.getReviewWorkflowById(reviewWorkflowId);
     assert.ok(restoredWorkflow);
     assert.equal(restoredWorkflow?.state, reviewWorkflowState.SUBMITTED);
+    assert.equal(restoredWorkflow?.evidenceCollectionId, 'evidence_set_wp_1');
     assert.equal(restoredWorkflow?.transitionHistory.length, 3);
+    assert.deepEqual(
+      restoredWorkflow?.transitionHistory.map((item) => item.sequence),
+      [1, 2, 3],
+    );
     assert.equal(restoredWorkflow?.transitionHistory[0].fromState, reviewWorkflowState.DRAFT);
+    assert.equal(restoredWorkflow?.transitionHistory[0].actorRole, workflowActorRole.FACULTY);
     assert.equal(restoredWorkflow?.transitionHistory[2].toState, reviewWorkflowState.SUBMITTED);
+    assert.equal(restoredWorkflow?.transitionHistory[2].actorRole, workflowActorRole.ADMIN);
+    assert.equal(restoredWorkflow?.transitionHistory[2].evidenceSummary.collectionRequirementSatisfied, true);
+    assert.equal(restoredWorkflow?.transitionHistory[2].evidenceSummary.requiredUsableEvidenceCount, 1);
 
     await assert.rejects(
       () =>

@@ -34,6 +34,7 @@ function toReviewWorkflowSnapshot(workflow) {
     transitionHistory: (workflow.transitionHistory ?? []).map((item) => ({
       id: item.id,
       workflowId: item.workflowId,
+      sequence: item.sequence,
       fromState: item.fromState,
       toState: item.toState,
       actorRole: item.actorRole,
@@ -214,6 +215,7 @@ export class InMemoryReviewWorkflowRepository extends ReviewWorkflowRepository {
         throw new ValidationError(`Workflow transition history is append-only: missing ${persisted.id}`);
       }
       if (
+        candidate.sequence !== persisted.sequence ||
         candidate.workflowId !== persisted.workflowId ||
         candidate.fromState !== persisted.fromState ||
         candidate.toState !== persisted.toState ||

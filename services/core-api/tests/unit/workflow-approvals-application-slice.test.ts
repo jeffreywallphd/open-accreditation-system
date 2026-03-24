@@ -1,4 +1,11 @@
 import assert from 'node:assert/strict';
+import { EvidenceManagementService } from '../../src/modules/evidence-management/application/evidence-management-service.js';
+import { WorkflowEvidenceReadinessService } from '../../src/modules/evidence-management/application/workflow-evidence-readiness-service.js';
+import { InMemoryEvidenceItemRepository } from '../../src/modules/evidence-management/infrastructure/persistence/in-memory-evidence-management-repositories.js';
+import {
+  evidenceSourceType,
+  evidenceType,
+} from '../../src/modules/evidence-management/domain/value-objects/evidence-classifications.js';
 import { WorkflowApprovalsService } from '../../src/modules/workflow-approvals/application/workflow-approvals-service.js';
 import {
   CreateReviewCycleCommand,
@@ -23,6 +30,7 @@ export async function runTests(): Promise<void> {
   const cycles = new InMemoryReviewCycleRepository();
   const workflows = new InMemoryReviewWorkflowRepository();
   const institutions = new InMemoryInstitutionRepository();
+  const evidenceItems = new InMemoryEvidenceItemRepository();
 
   const institution = Institution.create({
     id: 'inst_workflow_application',
@@ -31,28 +39,21 @@ export async function runTests(): Promise<void> {
   });
   await institutions.save(institution);
 
-  const evidenceById = new Map<string, any>([
-    [
-      'ev_1',
-      {
-        id: 'ev_1',
-        institutionId: institution.id,
-        isComplete: false,
-        status: 'draft',
-        usability: { isUsable: false },
-      },
-    ],
-  ]);
+  const evidenceManagement = new EvidenceManagementService({
+    institutions,
+    evidenceItems,
+    accreditationFrameworks: {},
+    curriculumMapping: {},
+  });
+  const evidenceReadiness = new WorkflowEvidenceReadinessService({
+    evidenceManagement,
+  });
 
   const service = new WorkflowApprovalsService({
     cycles,
     workflows,
     institutions,
-    evidenceManagement: {
-      async getEvidenceItemById(id: string) {
-        return evidenceById.get(id) ?? null;
-      },
-    },
+    evidenceReadiness,
   });
 
   const createReviewCycle = new CreateReviewCycleCommand(service);
@@ -71,6 +72,26 @@ export async function runTests(): Promise<void> {
     evidenceSetIds: ['collection_1'],
   });
   await startReviewCycle.execute(cycle.id);
+
+  const draftEvidence = await evidenceManagement.createEvidenceItem({
+    id: 'ev_1',
+    institutionId: institution.id,
+    title: 'Cycle Evidence 1',
+    description: 'Initial evidence package',
+    reviewCycleId: cycle.id,
+    evidenceType: evidenceType.NARRATIVE,
+    sourceType: evidenceSourceType.MANUAL,
+  });
+
+  const orphanCollectionCycle = await createReviewCycle.execute({
+    institutionId: institution.id,
+    name: '2026 Orphan Collection Cycle',
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    programIds: ['program_3'],
+    evidenceSetIds: [],
+  });
+  await startReviewCycle.execute(orphanCollectionCycle.id);
 
   const duplicateScopeCycle = await createReviewCycle.execute({
     institutionId: institution.id,
@@ -104,11 +125,36 @@ export async function runTests(): Promise<void> {
     'workflow creation should require active cycle',
   );
 
+  await assert.rejects(
+    () =>
+      createReviewWorkflow.execute({
+        reviewCycleId: cycle.id,
+        targetType: 'report-section',
+        targetId: 'section_missing_evidence',
+        evidenceItemIds: ['ev_missing'],
+      }),
+    ValidationError,
+    'workflow creation should reject missing evidence references',
+  );
+
+  await assert.rejects(
+    () =>
+      createReviewWorkflow.execute({
+        reviewCycleId: orphanCollectionCycle.id,
+        targetType: 'report-section',
+        targetId: 'section_orphan_collection',
+        evidenceCollectionId: 'collection_missing',
+      }),
+    ValidationError,
+    'workflow creation should reject evidenceCollectionId not declared by the ReviewCycle',
+  );
+
   const workflow = await createReviewWorkflow.execute({
     reviewCycleId: cycle.id,
     targetType: 'report-section',
     targetId: 'section_2_1',
     reportSectionId: 'section_2_1',
+    evidenceCollectionId: 'collection_1',
     evidenceItemIds: ['ev_1'],
   });
   assert.equal(workflow.state, reviewWorkflowState.DRAFT);
@@ -144,13 +190,8 @@ export async function runTests(): Promise<void> {
     'approval should fail while referenced evidence is incomplete/inactive',
   );
 
-  evidenceById.set('ev_1', {
-    id: 'ev_1',
-    institutionId: institution.id,
-    isComplete: true,
-    status: 'active',
-    usability: { isUsable: true },
-  });
+  await evidenceManagement.markEvidenceComplete(draftEvidence.id);
+  await evidenceManagement.activateEvidenceItem(draftEvidence.id);
 
   const approved = await transitionReviewWorkflowState.execute(
     workflow.id,
@@ -159,6 +200,8 @@ export async function runTests(): Promise<void> {
   );
   assert.equal(approved.state, reviewWorkflowState.APPROVED);
   assert.equal(approved.transitionHistory.length, 2);
+  assert.equal(approved.transitionHistory[1].evidenceSummary.collectionRequirementSatisfied, true);
+  assert.equal(approved.transitionHistory[1].evidenceSummary.collectionUsableEvidenceCount >= 1, true);
 
   await assert.rejects(
     () =>
@@ -180,5 +223,7 @@ export async function runTests(): Promise<void> {
   const cycleWorkflows = await getWorkflowStateForCycle.execute(cycle.id);
   assert.equal(cycleWorkflows.length, 1);
   assert.equal(cycleWorkflows[0].state, reviewWorkflowState.SUBMITTED);
+  assert.equal(cycleWorkflows[0].transitionHistory[2].evidenceSummary.requiredUsableEvidenceCount, 1);
+  assert.equal(cycleWorkflows[0].transitionHistory[2].evidenceSummary.isSufficient, true);
 }
 
