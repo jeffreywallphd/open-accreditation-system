@@ -170,6 +170,14 @@ Defined contexts:
   - `EvidenceRequest` is mutable in place for open/fulfilled/cancelled state, with immutable status-change history captured by events
   - `EvidenceRetentionPolicy` is supersedable/versioned
 
+**Current implementation note (Epic 2 Phase 1 foundation)**
+
+- `EvidenceItem` is implemented as a first-class aggregate in `services/core-api`.
+- `EvidenceItem` classification is constrained to canonical evidence types (`document`, `metric`, `narrative`, `dataset`, `assessment-artifact`) and provenance types (`manual`, `upload`, `integration`).
+- `EvidenceItem` lifecycle status (`draft`, `active`, `superseded`, `incomplete`, `archived`) is separate from workflow approval state.
+- Usability is modeled explicitly from evidence lifecycle + completeness + available artifacts.
+- Binary/file storage metadata is modeled in `EvidenceArtifact`, not in `EvidenceItem`.
+
 ### `assessment-improvement`
 
 **Owns**
