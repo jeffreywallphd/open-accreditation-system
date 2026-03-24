@@ -48,3 +48,9 @@ export const reviewTeamMembershipState = Object.freeze({
   SUPERSEDED: 'superseded',
   REMOVED: 'removed',
 });
+
+export const reviewTeamMembershipConflictStatus = Object.freeze({
+  NONE: 'none',
+  DISCLOSED: 'disclosed',
+  CONFIRMED: 'confirmed',
+});

@@ -1,7 +1,11 @@
 import { assertDateOrder, assertOneOf, assertRequired, assertString } from '../../../shared/kernel/assertions.js';
 import { ValidationError } from '../../../shared/kernel/errors.js';
 import { createId, nowIso } from '../../../shared/kernel/identity.js';
-import { reviewTeamMembershipState, reviewTeamStatus } from '../value-objects/accreditation-statuses.js';
+import {
+  reviewTeamMembershipConflictStatus,
+  reviewTeamMembershipState,
+  reviewTeamStatus,
+} from '../value-objects/accreditation-statuses.js';
 
 function assertUnique(values, message) {
   if (new Set(values).size !== values.length) {
@@ -16,6 +20,11 @@ export class ReviewTeamMembership {
     assertRequired(props.personId, 'ReviewTeamMembership.personId');
     assertString(props.role, 'ReviewTeamMembership.role');
     assertOneOf(props.state, 'ReviewTeamMembership.state', Object.values(reviewTeamMembershipState));
+    assertOneOf(
+      props.conflictStatus,
+      'ReviewTeamMembership.conflictStatus',
+      Object.values(reviewTeamMembershipConflictStatus),
+    );
     assertDateOrder(props.effectiveStartDate, props.effectiveEndDate);
 
     this.id = props.id;
@@ -26,6 +35,7 @@ export class ReviewTeamMembership {
     this.responsibilitySummary = props.responsibilitySummary ?? null;
     this.isPrimary = props.isPrimary ?? false;
     this.state = props.state;
+    this.conflictStatus = props.conflictStatus;
     this.effectiveStartDate = props.effectiveStartDate ?? null;
     this.effectiveEndDate = props.effectiveEndDate ?? null;
     this.supersedesMembershipId = props.supersedesMembershipId ?? null;
@@ -45,6 +55,7 @@ export class ReviewTeamMembership {
       responsibilitySummary: input.responsibilitySummary,
       isPrimary: input.isPrimary ?? false,
       state: input.state ?? reviewTeamMembershipState.ACTIVE,
+      conflictStatus: input.conflictStatus ?? reviewTeamMembershipConflictStatus.NONE,
       effectiveStartDate: input.effectiveStartDate,
       effectiveEndDate: input.effectiveEndDate,
       supersedesMembershipId: input.supersedesMembershipId,
@@ -111,7 +122,7 @@ export class ReviewTeam {
     const activeForPerson = this.memberships.find(
       (item) => item.personId === membership.personId && item.state === reviewTeamMembershipState.ACTIVE,
     );
-    if (activeForPerson && !membership.supersedesMembershipId) {
+    if (membership.state === reviewTeamMembershipState.ACTIVE && activeForPerson && !membership.supersedesMembershipId) {
       throw new ValidationError(`Active ReviewTeamMembership already exists for personId: ${membership.personId}`);
     }
 
@@ -126,8 +137,26 @@ export class ReviewTeam {
       if (superseded.personId !== membership.personId) {
         throw new ValidationError('Superseding membership must keep the same personId');
       }
+      if (!membership.effectiveStartDate) {
+        throw new ValidationError('Superseding membership requires effectiveStartDate');
+      }
+      if (
+        superseded.effectiveStartDate &&
+        new Date(membership.effectiveStartDate).getTime() < new Date(superseded.effectiveStartDate).getTime()
+      ) {
+        throw new ValidationError('Superseding membership effectiveStartDate cannot be before superseded membership start');
+      }
+      if (
+        superseded.effectiveEndDate &&
+        new Date(superseded.effectiveEndDate).getTime() > new Date(membership.effectiveStartDate).getTime()
+      ) {
+        throw new ValidationError('Superseding membership effectiveStartDate must be on/after superseded membership end');
+      }
       superseded.state = reviewTeamMembershipState.SUPERSEDED;
       superseded.supersededByMembershipId = membership.id;
+      if (!superseded.effectiveEndDate) {
+        superseded.effectiveEndDate = membership.effectiveStartDate;
+      }
       superseded.updatedAt = nowIso();
     }
 
@@ -150,6 +179,24 @@ export class ReviewTeam {
         throw new ValidationError(
           `ReviewTeamMembership.reviewTeamId must match ReviewTeam.id: ${membership.id}`,
         );
+      }
+      if (membership.isPrimary && membership.state !== reviewTeamMembershipState.ACTIVE) {
+        throw new ValidationError('ReviewTeamMembership.isPrimary requires active state');
+      }
+      if (membership.conflictStatus === reviewTeamMembershipConflictStatus.CONFIRMED) {
+        if (membership.state === reviewTeamMembershipState.ACTIVE) {
+          throw new ValidationError('ReviewTeamMembership with confirmed conflict cannot be active');
+        }
+        if (membership.isPrimary) {
+          throw new ValidationError('ReviewTeamMembership with confirmed conflict cannot be primary');
+        }
+      }
+      if (
+        membership.effectiveStartDate &&
+        membership.effectiveEndDate &&
+        new Date(membership.effectiveEndDate).getTime() < new Date(membership.effectiveStartDate).getTime()
+      ) {
+        throw new ValidationError('ReviewTeamMembership effective dates are invalid');
       }
     }
 

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../../infrastructure/persistence/persistence.tokens.js';
-import { ORG_REPOSITORY_TOKENS, OrganizationRegistryModule } from '../organization-registry/organization-registry.module.js';
+import { OrganizationRegistryModule, ORG_SERVICE } from '../organization-registry/organization-registry.module.js';
+import { CurriculumMappingModule, CURR_SERVICE } from '../curriculum-mapping/curriculum-mapping.module.js';
 import { AccreditationFrameworksService } from './application/accreditation-frameworks-service.js';
 import { OrganizationRegistryScopeReferenceAdapter } from './infrastructure/adapters/organization-registry-scope-reference-adapter.js';
 import {
@@ -28,7 +29,7 @@ export const AFR_SCOPE_REFERENCES = Symbol('AFR_SCOPE_REFERENCES');
 export const AFR_SERVICE = Symbol('AFR_SERVICE');
 
 @Module({
-  imports: [OrganizationRegistryModule],
+  imports: [OrganizationRegistryModule, CurriculumMappingModule],
   controllers: [AccreditationFrameworksController],
   providers: [
     {
@@ -63,12 +64,11 @@ export const AFR_SERVICE = Symbol('AFR_SERVICE');
     },
     {
       provide: AFR_SCOPE_REFERENCES,
-      inject: [ORG_REPOSITORY_TOKENS.institutions, ORG_REPOSITORY_TOKENS.people, ORG_REPOSITORY_TOKENS.organizationUnits],
-      useFactory: (institutions, people, organizationUnits) =>
+      inject: [ORG_SERVICE, CURR_SERVICE],
+      useFactory: (organizationRegistryService, curriculumMappingService) =>
         new OrganizationRegistryScopeReferenceAdapter({
-          institutions,
-          people,
-          organizationUnits,
+          organizationRegistryService,
+          curriculumMappingService,
         }),
     },
     {

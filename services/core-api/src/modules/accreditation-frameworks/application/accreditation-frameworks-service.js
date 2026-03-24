@@ -100,10 +100,10 @@ export class AccreditationFrameworksService {
     const programIds = input.programIds ?? [];
     const organizationUnitIds = input.organizationUnitIds ?? [];
     if (programIds.length > 0) {
-      await this.scopeReferences.ensureProgramsExist(programIds);
+      await this.scopeReferences.ensureProgramsExistForInstitution(programIds, cycle.institutionId);
     }
     if (organizationUnitIds.length > 0) {
-      await this.scopeReferences.ensureOrganizationUnitsExist(organizationUnitIds);
+      await this.scopeReferences.ensureOrganizationUnitsExistForInstitution(organizationUnitIds, cycle.institutionId);
     }
 
     cycle.addScope(input);
@@ -135,11 +135,11 @@ export class AccreditationFrameworksService {
   }
 
   async createReviewerProfile(input) {
-    await this.scopeReferences.ensurePersonExists(input.personId);
+    await this.scopeReferences.ensurePersonInInstitution(input.personId, input.institutionId);
     await this.scopeReferences.ensureInstitutionExists(input.institutionId);
 
     const existing = await this.reviewerProfiles.getByPersonId(input.personId);
-    if (existing && existing.institutionId === input.institutionId) {
+    if (existing) {
       throw new ValidationError(`ReviewerProfile already exists for personId: ${input.personId}`);
     }
 
@@ -167,7 +167,7 @@ export class AccreditationFrameworksService {
   async addReviewTeamMembership(reviewTeamId, input) {
     const team = await this.#requireReviewTeam(reviewTeamId);
     const cycle = await this.#requireCycle(team.accreditationCycleId);
-    await this.scopeReferences.ensurePersonExists(input.personId);
+    await this.scopeReferences.ensurePersonInInstitution(input.personId, team.institutionId);
 
     if (input.reviewerProfileId) {
       const profile = await this.#requireReviewerProfile(input.reviewerProfileId);
