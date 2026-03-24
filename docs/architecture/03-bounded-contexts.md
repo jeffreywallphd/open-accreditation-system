@@ -175,12 +175,19 @@ Defined contexts:
 - `EvidenceItem` is implemented as a first-class aggregate in `services/core-api`.
 - `EvidenceItem` classification is constrained to canonical evidence types (`document`, `metric`, `narrative`, `dataset`, `assessment-artifact`) and provenance types (`manual`, `upload`, `integration`).
 - `EvidenceItem` lifecycle status (`draft`, `active`, `superseded`, `incomplete`, `archived`) is separate from workflow approval state.
+- Lifecycle transitions are explicit and enforced in the aggregate:
+  - `draft -> incomplete | active | archived`
+  - `incomplete -> draft | archived`
+  - `active -> incomplete | superseded | archived`
+  - `superseded` and `archived` are terminal in Phase 1.
 - Usability is modeled explicitly from evidence lifecycle + completeness + artifact requirements + available artifacts.
 - The aggregate enforces artifact ownership (`EvidenceArtifact.evidenceItemId` must match owning `EvidenceItem.id`) and exposes a computed "current artifact" as the most recent `available` artifact.
 - Binary/file storage metadata is modeled in `EvidenceArtifact`, not in `EvidenceItem`.
 - Activation is gated by required evidence metadata (`description` and at least one of `reportingPeriodId`/`reviewCycleId`), completeness, and artifact requirements.
 - Artifact requirements are domain-driven: `upload` sources and evidence types `document`, `dataset`, `assessment-artifact` require an available artifact for activation; `metric`/`narrative` may activate without an artifact when sourced by `manual`/`integration`.
-- `superseded` and `archived` statuses are terminal for metadata and artifact mutation in this phase.
+- Artifact registration is limited to editable statuses (`draft`, `incomplete`) in this phase; `active`, `superseded`, and `archived` do not allow artifact mutation.
+- `superseded` and `archived` statuses are terminal for lifecycle transitions in this phase.
+- Supersession orchestration validates successor existence and institution alignment before calling aggregate transitions.
 - Application-layer use cases are implemented for create, attach artifact metadata, retrieve, and governed status transitions (complete, incomplete, activate, supersede, archive) including a unified lifecycle-action entry point.
 
 ### `assessment-improvement`

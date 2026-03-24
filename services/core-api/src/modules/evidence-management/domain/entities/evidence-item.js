@@ -11,6 +11,15 @@ import {
   requiresArtifactForActivation,
 } from '../value-objects/evidence-classifications.js';
 
+const EDITABLE_EVIDENCE_STATUSES = Object.freeze(new Set([evidenceStatus.DRAFT, evidenceStatus.INCOMPLETE]));
+const EVIDENCE_STATUS_TRANSITIONS = Object.freeze({
+  [evidenceStatus.DRAFT]: new Set([evidenceStatus.INCOMPLETE, evidenceStatus.ACTIVE, evidenceStatus.ARCHIVED]),
+  [evidenceStatus.INCOMPLETE]: new Set([evidenceStatus.DRAFT, evidenceStatus.ARCHIVED]),
+  [evidenceStatus.ACTIVE]: new Set([evidenceStatus.INCOMPLETE, evidenceStatus.SUPERSEDED, evidenceStatus.ARCHIVED]),
+  [evidenceStatus.SUPERSEDED]: new Set(),
+  [evidenceStatus.ARCHIVED]: new Set(),
+});
+
 export class EvidenceArtifact {
   constructor(props) {
     assertRequired(props.id, 'EvidenceArtifact.id');
@@ -43,6 +52,10 @@ export class EvidenceArtifact {
   }
 
   static create(input) {
+    if (input.status === evidenceArtifactStatus.REMOVED) {
+      throw new ValidationError('EvidenceArtifact.status=removed cannot be registered as a new artifact');
+    }
+
     const now = nowIso();
     return new EvidenceArtifact({
       id: input.id ?? createId('ev_art'),
@@ -101,6 +114,16 @@ export class EvidenceItem {
   }
 
   static create(input) {
+    if (input.status !== undefined && input.status !== evidenceStatus.DRAFT) {
+      throw new ValidationError('EvidenceItem.create only supports initial status=draft');
+    }
+    if (input.isComplete !== undefined && input.isComplete !== false) {
+      throw new ValidationError('EvidenceItem.create only supports initial isComplete=false');
+    }
+    if (input.supersededByEvidenceItemId !== undefined && input.supersededByEvidenceItemId !== null) {
+      throw new ValidationError('EvidenceItem.create cannot set supersededByEvidenceItemId');
+    }
+
     const now = nowIso();
     return new EvidenceItem({
       id: input.id ?? createId('ev_item'),
@@ -109,9 +132,9 @@ export class EvidenceItem {
       description: input.description,
       evidenceType: input.evidenceType,
       sourceType: input.sourceType,
-      status: input.status ?? evidenceStatus.DRAFT,
-      isComplete: input.isComplete ?? false,
-      supersededByEvidenceItemId: input.supersededByEvidenceItemId,
+      status: evidenceStatus.DRAFT,
+      isComplete: false,
+      supersededByEvidenceItemId: null,
       reportingPeriodId: input.reportingPeriodId,
       reviewCycleId: input.reviewCycleId,
       artifacts: input.artifacts ?? [],
@@ -125,7 +148,7 @@ export class EvidenceItem {
   }
 
   registerArtifactMetadata(input) {
-    this.#assertMutableForMetadataChanges('register artifact metadata');
+    this.#assertArtifactMutationAllowed('register artifact metadata');
 
     const artifact = EvidenceArtifact.create({
       ...input,
@@ -141,7 +164,7 @@ export class EvidenceItem {
   }
 
   markReadyForUse() {
-    this.#assertMutableForMetadataChanges('mark complete');
+    this.#assertCanMarkReady();
     this.isComplete = true;
     if (this.status === evidenceStatus.INCOMPLETE) {
       this.status = evidenceStatus.DRAFT;
@@ -155,7 +178,7 @@ export class EvidenceItem {
   }
 
   markIncomplete() {
-    this.#assertMutableForMetadataChanges('mark incomplete');
+    this.#assertCanMarkIncomplete();
     this.isComplete = false;
     this.status = evidenceStatus.INCOMPLETE;
     this.updatedAt = nowIso();
@@ -163,7 +186,7 @@ export class EvidenceItem {
   }
 
   activateForUse() {
-    this.#assertMutableForMetadataChanges('activate');
+    this.#assertTransition(evidenceStatus.ACTIVE, 'activate');
     this.#assertCanActivate();
     this.status = evidenceStatus.ACTIVE;
     this.updatedAt = nowIso();
@@ -179,12 +202,7 @@ export class EvidenceItem {
     if (successorEvidenceItemId === this.id) {
       throw new ValidationError('EvidenceItem cannot supersede itself');
     }
-    if (this.status === evidenceStatus.ARCHIVED) {
-      throw new ValidationError('Archived EvidenceItem cannot be superseded');
-    }
-    if (this.status === evidenceStatus.SUPERSEDED) {
-      throw new ValidationError('Superseded EvidenceItem cannot be superseded again');
-    }
+    this.#assertTransition(evidenceStatus.SUPERSEDED, 'supersede');
     this.status = evidenceStatus.SUPERSEDED;
     this.supersededByEvidenceItemId = successorEvidenceItemId;
     this.updatedAt = nowIso();
@@ -196,7 +214,7 @@ export class EvidenceItem {
   }
 
   archive() {
-    this.#assertMutableForMetadataChanges('archive');
+    this.#assertTransition(evidenceStatus.ARCHIVED, 'archive');
     this.status = evidenceStatus.ARCHIVED;
     this.updatedAt = nowIso();
     return this;
@@ -258,6 +276,27 @@ export class EvidenceItem {
     }
   }
 
+  #assertTransition(nextStatus, action) {
+    const allowed = EVIDENCE_STATUS_TRANSITIONS[this.status] ?? new Set();
+    if (!allowed.has(nextStatus)) {
+      throw new ValidationError(
+        `EvidenceItem cannot ${action} from status=${this.status} to status=${nextStatus}`,
+      );
+    }
+  }
+
+  #assertCanMarkReady() {
+    if (this.status !== evidenceStatus.DRAFT && this.status !== evidenceStatus.INCOMPLETE) {
+      throw new ValidationError(`EvidenceItem cannot mark complete while status is ${this.status}`);
+    }
+  }
+
+  #assertCanMarkIncomplete() {
+    if (this.status !== evidenceStatus.DRAFT && this.status !== evidenceStatus.ACTIVE && this.status !== evidenceStatus.INCOMPLETE) {
+      throw new ValidationError(`EvidenceItem cannot mark incomplete while status is ${this.status}`);
+    }
+  }
+
   #assertNoArtifactStorageFields(props) {
     if (
       props.storageBucket !== undefined ||
@@ -271,8 +310,8 @@ export class EvidenceItem {
     }
   }
 
-  #assertMutableForMetadataChanges(action) {
-    if (this.status === evidenceStatus.SUPERSEDED || this.status === evidenceStatus.ARCHIVED) {
+  #assertArtifactMutationAllowed(action) {
+    if (!EDITABLE_EVIDENCE_STATUSES.has(this.status)) {
       throw new ValidationError(`EvidenceItem cannot ${action} while status is ${this.status}`);
     }
   }

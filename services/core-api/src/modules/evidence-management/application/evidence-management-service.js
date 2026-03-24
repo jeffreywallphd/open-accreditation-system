@@ -1,5 +1,6 @@
 import { NotFoundError, ValidationError } from '../../shared/kernel/errors.js';
 import { EvidenceItem } from '../domain/entities/evidence-item.js';
+import { evidenceStatus } from '../domain/value-objects/evidence-classifications.js';
 
 export const evidenceLifecycleAction = Object.freeze({
   COMPLETE: 'complete',
@@ -47,6 +48,8 @@ export class EvidenceManagementService {
 
   async supersedeEvidenceItem(evidenceItemId, successorEvidenceItemId) {
     const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    const successor = await this.#requireEvidenceItem(successorEvidenceItemId);
+    this.#assertValidSupersessionSuccessor(evidenceItem, successor);
     evidenceItem.supersedeBy(successorEvidenceItemId);
     return this.evidenceItems.save(evidenceItem);
   }
@@ -66,6 +69,9 @@ export class EvidenceManagementService {
       case evidenceLifecycleAction.ACTIVATE:
         return this.activateEvidenceItem(evidenceItemId);
       case evidenceLifecycleAction.SUPERSEDE:
+        if (!input.successorEvidenceItemId) {
+          throw new ValidationError('successorEvidenceItemId is required for supersede action');
+        }
         return this.supersedeEvidenceItem(evidenceItemId, input.successorEvidenceItemId);
       case evidenceLifecycleAction.ARCHIVE:
         return this.archiveEvidenceItem(evidenceItemId);
@@ -92,10 +98,24 @@ export class EvidenceManagementService {
   }
 
   async #requireEvidenceItem(evidenceItemId) {
+    if (!evidenceItemId) {
+      throw new ValidationError('EvidenceItem id is required');
+    }
     const evidenceItem = await this.evidenceItems.getById(evidenceItemId);
     if (!evidenceItem) {
       throw new NotFoundError('EvidenceItem', evidenceItemId);
     }
     return evidenceItem;
+  }
+
+  #assertValidSupersessionSuccessor(evidenceItem, successor) {
+    if (successor.institutionId !== evidenceItem.institutionId) {
+      throw new ValidationError('Superseding EvidenceItem must belong to the same institution');
+    }
+    if (successor.status === evidenceStatus.SUPERSEDED || successor.status === evidenceStatus.ARCHIVED) {
+      throw new ValidationError(
+        `Superseding EvidenceItem must not be terminal (received status=${successor.status})`,
+      );
+    }
   }
 }
