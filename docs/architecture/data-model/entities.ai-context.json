@@ -1,7 +1,7 @@
 {
   "meta": {
     "document": "Open Accreditation System entity model AI context",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "source_docs": [
       "README.md",
       "docs/architecture/README.md",
@@ -726,6 +726,17 @@
       "AccreditationScope must include at least one Program or OrganizationUnit reference.",
       "CycleMilestone, ReviewEvent, and AccreditationScope dates must stay within AccreditationCycle start/end dates.",
       "DecisionRecord is append-only after issuance; corrections are represented by successor records that supersede prior decisions."
+    ],
+    "evidenceManagementEpic2Phase1": [
+      "EvidenceItem is a first-class aggregate root for governed accreditation evidence metadata.",
+      "EvidenceItem.evidenceType must be one of: document, metric, narrative, dataset, assessment-artifact.",
+      "EvidenceItem.sourceType must be one of: manual, upload, integration.",
+      "EvidenceItem.status must be one of: draft, active, superseded, incomplete, archived.",
+      "EvidenceItem lifecycle status is evidence-governance state and must not duplicate workflow approval state.",
+      "EvidenceItem must not embed artifact storage fields; storage metadata belongs to EvidenceArtifact child records.",
+      "EvidenceItem.status=active requires isComplete=true and at least one available EvidenceArtifact.",
+      "EvidenceItem.status=incomplete requires isComplete=false.",
+      "EvidenceItem.status=superseded requires supersededByEvidenceItemId."
     ],
     "crossContextReferenceRules": [
       "accreditation-frameworks validates local shape and ownership invariants for framework and cycle aggregates.",

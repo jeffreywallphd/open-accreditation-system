@@ -68,6 +68,7 @@ This is a **logical data model**, not a finalized physical database schema. It i
 - [Assessment scope matrix](#assessment-scope-matrix)
 - [Reviewer/event responsibility semantics](#reviewerevent-responsibility-semantics)
 - [Implementation-ready accreditation invariants (Epic 1 slice)](#implementation-ready-accreditation-invariants-epic-1-slice)
+- [Implementation-ready evidence invariants (Epic 2 Phase 1 foundation)](#implementation-ready-evidence-invariants-epic-2-phase-1-foundation)
 - [Implementation-ready curriculum linkage invariants (Epic 2 Phase 0 groundwork)](#implementation-ready-curriculum-linkage-invariants-epic-2-phase-0-groundwork)
 - [Key cross-context relationships](#key-cross-context-relationships)
   - [Person, identity, and reviewer/faculty relationships](#person-identity-and-reviewerfaculty-relationships)
@@ -386,11 +387,13 @@ Own governed evidence metadata, artifacts, provenance, review status, requests, 
 
 - `EvidenceReference` is a governed polymorphic child of `EvidenceItem`; it is not a generic global join table.
 - `EvidenceReview` is distinct from workflow approval. An evidence item may be reviewed for quality or sufficiency before, during, or after workflow submission.
+- `EvidenceItem` lifecycle state is evidence-governance state, not workflow decision state.
+- `EvidenceItem` and `EvidenceArtifact` are intentionally separate so governed evidence meaning is not coupled to binary/object storage implementation details.
 
 **Entity baseline**
 
-- `EvidenceItem`: governed evidence record with title, description, evidence type, provenance, confidentiality, lifecycle status, and owning institution.
-- `EvidenceArtifact`: storage-backed artifact metadata for a given evidence item.
+- `EvidenceItem`: governed evidence record with title, description, evidence type, source classification, lifecycle status, completeness/usability flags, and owning institution.
+- `EvidenceArtifact`: storage-backed artifact metadata for a given evidence item, including storage bucket/key, mime metadata, and artifact-level availability state.
 - `EvidenceCollection`: curated grouping of evidence items, often used for report assembly or scoped evidence calls.
 
 #### `EvidenceRequest`
@@ -975,6 +978,23 @@ Implementation note (current `core-api` slice): `AccreditationScopeProgram` and 
 - Existence validation for program/organization references must happen through published application ports, never by direct table-level coupling.
 - Current `core-api` implementation validates institution/person/organization references through published `organization-registry` application services and validates program references through published `curriculum-mapping` application services.
 - `evidence-management`, `workflow-approvals`, and `assessment-improvement` may reference IDs for traceability but must not mutate `accreditation-frameworks` state.
+
+## Implementation-ready evidence invariants (Epic 2 Phase 1 foundation)
+
+Implementation note (current `core-api` slice): the `evidence-management` module now includes a first-class `EvidenceItem` aggregate with `EvidenceArtifact` children and explicit classification/lifecycle semantics to establish the Phase 1 foundation.
+
+### EvidenceItem and EvidenceArtifact invariants
+
+- `EvidenceItem.evidenceType` is constrained to canonical values: `document`, `metric`, `narrative`, `dataset`, `assessment-artifact`.
+- `EvidenceItem.sourceType` is constrained to canonical provenance values: `manual`, `upload`, `integration`.
+- `EvidenceItem.status` is constrained to evidence lifecycle values: `draft`, `active`, `superseded`, `incomplete`, `archived`.
+- `EvidenceItem.status` is evidence-governance state only and must not be used as workflow approval state.
+- `EvidenceItem` must not embed artifact storage fields (such as bucket/key/mime/byte size); those belong to `EvidenceArtifact`.
+- `EvidenceArtifact` is always owned by exactly one `EvidenceItem`.
+- `EvidenceArtifact.status` is constrained to `available`, `quarantined`, or `removed`.
+- `EvidenceItem.status=active` requires `isComplete=true` and at least one `EvidenceArtifact` in `available` status.
+- `EvidenceItem.status=incomplete` requires `isComplete=false`.
+- `EvidenceItem.status=superseded` requires `supersededByEvidenceItemId`.
 
 ## Implementation-ready curriculum linkage invariants (Epic 2 Phase 0 groundwork)
 

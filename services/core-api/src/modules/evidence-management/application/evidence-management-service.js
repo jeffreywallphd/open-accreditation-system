@@ -1,0 +1,74 @@
+import { NotFoundError, ValidationError } from '../../shared/kernel/errors.js';
+import { EvidenceItem } from '../domain/entities/evidence-item.js';
+
+export class EvidenceManagementService {
+  constructor(deps) {
+    this.evidenceItems = deps.evidenceItems;
+    this.institutions = deps.institutions;
+  }
+
+  async createEvidenceItem(input) {
+    await this.#requireInstitution(input.institutionId);
+    const evidenceItem = EvidenceItem.create(input);
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async addEvidenceArtifact(evidenceItemId, input) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.addArtifact(input);
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async markEvidenceComplete(evidenceItemId) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.markComplete();
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async markEvidenceIncomplete(evidenceItemId) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.markIncomplete();
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async activateEvidenceItem(evidenceItemId) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.activate();
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async supersedeEvidenceItem(evidenceItemId, successorEvidenceItemId) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.supersedeBy(successorEvidenceItemId);
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async archiveEvidenceItem(evidenceItemId) {
+    const evidenceItem = await this.#requireEvidenceItem(evidenceItemId);
+    evidenceItem.archive();
+    return this.evidenceItems.save(evidenceItem);
+  }
+
+  async getEvidenceItemById(id) {
+    return this.evidenceItems.getById(id);
+  }
+
+  async listEvidenceItems(filter = {}) {
+    return this.evidenceItems.findByFilter(filter);
+  }
+
+  async #requireInstitution(institutionId) {
+    const institution = await this.institutions.getById(institutionId);
+    if (!institution) {
+      throw new ValidationError(`Institution not found: ${institutionId}`);
+    }
+  }
+
+  async #requireEvidenceItem(evidenceItemId) {
+    const evidenceItem = await this.evidenceItems.getById(evidenceItemId);
+    if (!evidenceItem) {
+      throw new NotFoundError('EvidenceItem', evidenceItemId);
+    }
+    return evidenceItem;
+  }
+}

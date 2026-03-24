@@ -9,9 +9,16 @@ import { OrganizationRegistryModule } from './modules/organization-registry/orga
 import { IdentityAccessModule } from './modules/identity-access/identity-access.module.js';
 import { AccreditationFrameworksModule } from './modules/accreditation-frameworks/accreditation-frameworks.module.js';
 import { CurriculumMappingModule } from './modules/curriculum-mapping/curriculum-mapping.module.js';
+import { EvidenceManagementModule } from './modules/evidence-management/evidence-management.module.js';
 
 @Module({
-  imports: [OrganizationRegistryModule, IdentityAccessModule, CurriculumMappingModule, AccreditationFrameworksModule],
+  imports: [
+    OrganizationRegistryModule,
+    IdentityAccessModule,
+    CurriculumMappingModule,
+    AccreditationFrameworksModule,
+    EvidenceManagementModule,
+  ],
   providers: [
     {
       provide: APP_CONFIG,
