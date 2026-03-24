@@ -225,10 +225,10 @@ export async function runTests(): Promise<void> {
     'supersede action should require successor evidence item to exist',
   );
 
-  const successor = await createEvidenceItem.execute({
+  const lineageMismatchedSuccessor = await createEvidenceItem.execute({
     institutionId: institution.id,
-    title: 'Integration Metric Upload - Successor',
-    description: 'Superseding metric evidence item.',
+    title: 'Integration Metric Upload - Unrelated Successor',
+    description: 'Different lineage item should be rejected as supersession target.',
     reportingPeriodId: 'period_2026',
     evidenceType: evidenceType.METRIC,
     sourceType: evidenceSourceType.UPLOAD,
@@ -253,15 +253,14 @@ export async function runTests(): Promise<void> {
     'terminal successors are invalid supersession targets',
   );
 
-  await attachEvidenceArtifact.execute(successor.id, {
-    artifactName: 'metrics-v2.csv',
-    artifactType: 'primary',
-    mimeType: 'text/csv',
-    storageBucket: 'evidence-bucket',
-    storageKey: 'assessments/2026/metrics-v2.csv',
-  });
-  await updateEvidenceItemStatus.execute(successor.id, evidenceLifecycleAction.COMPLETE);
-  await updateEvidenceItemStatus.execute(successor.id, evidenceLifecycleAction.ACTIVATE);
+  await assert.rejects(
+    () =>
+      updateEvidenceItemStatus.execute(uploadMetric.id, evidenceLifecycleAction.SUPERSEDE, {
+        successorEvidenceItemId: lineageMismatchedSuccessor.id,
+      }),
+    ValidationError,
+    'supersession successor must share lineage and explicit predecessor linkage',
+  );
 
   const crossInstitutionSuccessor = await createEvidenceItem.execute({
     institutionId: otherInstitution.id,
@@ -280,13 +279,38 @@ export async function runTests(): Promise<void> {
     'supersession successor must belong to the same institution',
   );
 
-  const superseded = await updateEvidenceItemStatus.execute(uploadMetric.id, evidenceLifecycleAction.SUPERSEDE, {
-    successorEvidenceItemId: successor.id,
+  const successor = await createSupersedingEvidenceVersion.execute(uploadMetric.id, {
+    title: 'Integration Metric Upload - Successor v2',
+    description: 'Superseding metric evidence item.',
+    reviewCycleId: 'cycle_2027',
   });
-  assert.equal(superseded.status, evidenceStatus.SUPERSEDED);
+  await attachEvidenceArtifact.execute(successor.id, {
+    artifactName: 'metrics-v2.csv',
+    artifactType: 'primary',
+    mimeType: 'text/csv',
+    storageBucket: 'evidence-bucket',
+    storageKey: 'assessments/2027/metrics-v2.csv',
+  });
+  await updateEvidenceItemStatus.execute(successor.id, evidenceLifecycleAction.COMPLETE);
+  await updateEvidenceItemStatus.execute(successor.id, evidenceLifecycleAction.ACTIVATE);
+
+  await assert.rejects(
+    () =>
+      updateEvidenceItemStatus.execute(uploadMetric.id, evidenceLifecycleAction.SUPERSEDE, {
+        successorEvidenceItemId: successor.id,
+      }),
+    ValidationError,
+    'superseding again should fail because predecessor already superseded',
+  );
+
+  const supersededUploadMetric = await getEvidenceItemById.execute(uploadMetric.id);
+  assert.ok(supersededUploadMetric);
+  assert.equal(supersededUploadMetric?.status, evidenceStatus.SUPERSEDED);
+  assert.equal(supersededUploadMetric?.supersededByEvidenceItemId, successor.id);
 
   const supersedingDraft = await createSupersedingEvidenceVersion.execute(successor.id, {
     title: 'Integration Metric Upload - Successor v3 Draft',
+    reviewCycleId: 'cycle_2027',
   });
   assert.equal(supersedingDraft.status, evidenceStatus.DRAFT);
   assert.equal(supersedingDraft.evidenceLineageId, successor.evidenceLineageId);
@@ -419,6 +443,16 @@ export async function runTests(): Promise<void> {
     'repository should reject in-place mutation of existing reference records',
   );
 
+  const tamperedInvalidState = await evidenceItems.getById(lineageMismatchedSuccessor.id);
+  assert.ok(tamperedInvalidState);
+  tamperedInvalidState.status = evidenceStatus.ACTIVE;
+  tamperedInvalidState.isComplete = true;
+  await assert.rejects(
+    () => evidenceItems.save(tamperedInvalidState),
+    ValidationError,
+    'repository should revalidate aggregate invariants and reject invalid lifecycle state',
+  );
+
   const invalidSuccessor = EvidenceItem.create({
     institutionId: institution.id,
     title: 'Invalid Successor',
@@ -436,12 +470,46 @@ export async function runTests(): Promise<void> {
     'repository should enforce predecessor-successor version increments on insert',
   );
 
+  const inactivePredecessor = await createEvidenceItem.execute({
+    institutionId: institution.id,
+    title: 'Inactive Predecessor',
+    description: 'Draft evidence that should not allow successor insert.',
+    reviewCycleId: 'cycle_2028',
+    evidenceType: evidenceType.NARRATIVE,
+    sourceType: evidenceSourceType.MANUAL,
+  });
+  const successorOfInactivePredecessor = EvidenceItem.create({
+    institutionId: institution.id,
+    title: 'Successor Of Inactive Predecessor',
+    description: 'Should be rejected because predecessor is not active.',
+    reviewCycleId: 'cycle_2028',
+    evidenceType: evidenceType.NARRATIVE,
+    sourceType: evidenceSourceType.MANUAL,
+    evidenceLineageId: inactivePredecessor.evidenceLineageId,
+    versionNumber: 2,
+    supersedesEvidenceItemId: inactivePredecessor.id,
+  });
+  await assert.rejects(
+    () => evidenceItems.save(successorOfInactivePredecessor),
+    ValidationError,
+    'repository should reject successor insertion when predecessor is not active',
+  );
+
   const cycleReadySummary = await getEvidenceLineageCycleReadiness.execute(successor.evidenceLineageId);
   assert.equal(cycleReadySummary.evidenceLineageId, successor.evidenceLineageId);
   assert.equal(cycleReadySummary.versionCount, 3);
-  assert.equal(cycleReadySummary.hasCrossCycleReuse, false);
+  assert.equal(cycleReadySummary.createdInReportingPeriodId, 'period_2026');
+  assert.equal(cycleReadySummary.createdInReviewCycleId, null);
+  assert.equal(cycleReadySummary.hasCrossCycleReuse, true);
+  assert.equal(cycleReadySummary.hasCrossCycleSupersession, true);
+  assert.equal(cycleReadySummary.hasWithinCycleSupersession, true);
+  assert.equal(cycleReadySummary.crossCycleSupersessionCount, 1);
+  assert.equal(cycleReadySummary.withinCycleSupersessionCount, 1);
   assert.equal(cycleReadySummary.reviewCycleIds.length, 1);
-  assert.equal(cycleReadySummary.reviewCycleIds[0], 'cycle_2026');
+  assert.equal(cycleReadySummary.reviewCycleIds[0], 'cycle_2027');
+  assert.equal(cycleReadySummary.versions[0].supersessionScope, 'none');
+  assert.equal(cycleReadySummary.versions[1].supersessionScope, 'cross-cycle');
+  assert.equal(cycleReadySummary.versions[2].supersessionScope, 'within-cycle');
 
   await assert.rejects(
     () =>

@@ -214,16 +214,28 @@ export class EvidenceManagementService {
 
   async getEvidenceLineageCycleReadiness(evidenceLineageId) {
     const versions = await this.listEvidenceVersions(evidenceLineageId, { includeHistorical: true });
+    const versionsById = new Map(versions.map((item) => [item.id, item]));
     const reviewCycleIds = [...new Set(versions.map((item) => item.reviewCycleId).filter(Boolean))];
     const reportingPeriodIds = [...new Set(versions.map((item) => item.reportingPeriodId).filter(Boolean))];
+    const initialVersion = versions[0] ?? null;
+    let withinCycleSupersessionCount = 0;
+    let crossCycleSupersessionCount = 0;
 
-    return {
-      evidenceLineageId,
-      versionCount: versions.length,
-      reviewCycleIds,
-      reportingPeriodIds,
-      hasCrossCycleReuse: reviewCycleIds.length > 1 || reportingPeriodIds.length > 1,
-      versions: versions.map((item) => ({
+    const versionSummaries = versions.map((item) => {
+      const predecessor = item.supersedesEvidenceItemId ? versionsById.get(item.supersedesEvidenceItemId) : null;
+      let supersessionScope = 'none';
+      if (predecessor) {
+        const sameReviewCycle = predecessor.reviewCycleId === item.reviewCycleId;
+        const sameReportingPeriod = predecessor.reportingPeriodId === item.reportingPeriodId;
+        supersessionScope = sameReviewCycle && sameReportingPeriod ? 'within-cycle' : 'cross-cycle';
+        if (supersessionScope === 'within-cycle') {
+          withinCycleSupersessionCount += 1;
+        } else {
+          crossCycleSupersessionCount += 1;
+        }
+      }
+
+      return {
         id: item.id,
         versionNumber: item.versionNumber,
         status: item.status,
@@ -231,7 +243,23 @@ export class EvidenceManagementService {
         reportingPeriodId: item.reportingPeriodId,
         supersedesEvidenceItemId: item.supersedesEvidenceItemId,
         supersededByEvidenceItemId: item.supersededByEvidenceItemId,
-      })),
+        supersessionScope,
+      };
+    });
+
+    return {
+      evidenceLineageId,
+      versionCount: versions.length,
+      reviewCycleIds,
+      reportingPeriodIds,
+      hasCrossCycleReuse: reviewCycleIds.length > 1 || reportingPeriodIds.length > 1,
+      createdInReviewCycleId: initialVersion?.reviewCycleId ?? null,
+      createdInReportingPeriodId: initialVersion?.reportingPeriodId ?? null,
+      withinCycleSupersessionCount,
+      crossCycleSupersessionCount,
+      hasWithinCycleSupersession: withinCycleSupersessionCount > 0,
+      hasCrossCycleSupersession: crossCycleSupersessionCount > 0,
+      versions: versionSummaries,
     };
   }
 
@@ -254,6 +282,9 @@ export class EvidenceManagementService {
   }
 
   #assertValidSupersessionSuccessor(evidenceItem, successor) {
+    if (successor.id === evidenceItem.id) {
+      throw new ValidationError('Superseding EvidenceItem must not be the same as the predecessor');
+    }
     if (successor.institutionId !== evidenceItem.institutionId) {
       throw new ValidationError('Superseding EvidenceItem must belong to the same institution');
     }
@@ -261,6 +292,15 @@ export class EvidenceManagementService {
       throw new ValidationError(
         `Superseding EvidenceItem must not be terminal (received status=${successor.status})`,
       );
+    }
+    if (successor.evidenceLineageId !== evidenceItem.evidenceLineageId) {
+      throw new ValidationError('Superseding EvidenceItem must share evidenceLineageId with predecessor');
+    }
+    if (successor.supersedesEvidenceItemId !== evidenceItem.id) {
+      throw new ValidationError('Superseding EvidenceItem must reference predecessor via supersedesEvidenceItemId');
+    }
+    if (successor.versionNumber !== evidenceItem.versionNumber + 1) {
+      throw new ValidationError('Superseding EvidenceItem versionNumber must be predecessor.versionNumber + 1');
     }
   }
 

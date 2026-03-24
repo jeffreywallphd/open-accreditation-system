@@ -1,6 +1,7 @@
 import { ValidationError } from '../../../shared/kernel/errors.js';
 import { EvidenceItem, EvidenceArtifact, EvidenceReference } from '../../domain/entities/evidence-item.js';
 import { EvidenceItemRepository } from '../../domain/repositories/repositories.js';
+import { evidenceStatus } from '../../domain/value-objects/evidence-classifications.js';
 import { evidenceItemMatchesFilter } from './evidence-item-filtering.js';
 
 function filterClause(filter = {}, keyMap = {}) {
@@ -17,6 +18,54 @@ function filterClause(filter = {}, keyMap = {}) {
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
+function toEvidenceItemSnapshot(evidenceItem) {
+  return {
+    id: evidenceItem.id,
+    institutionId: evidenceItem.institutionId,
+    title: evidenceItem.title,
+    description: evidenceItem.description,
+    evidenceType: evidenceItem.evidenceType,
+    sourceType: evidenceItem.sourceType,
+    status: evidenceItem.status,
+    isComplete: evidenceItem.isComplete,
+    evidenceLineageId: evidenceItem.evidenceLineageId,
+    versionNumber: evidenceItem.versionNumber,
+    supersedesEvidenceItemId: evidenceItem.supersedesEvidenceItemId,
+    supersededByEvidenceItemId: evidenceItem.supersededByEvidenceItemId,
+    reportingPeriodId: evidenceItem.reportingPeriodId,
+    reviewCycleId: evidenceItem.reviewCycleId,
+    artifacts: (evidenceItem.artifacts ?? []).map((artifact) => ({
+      id: artifact.id,
+      evidenceItemId: artifact.evidenceItemId,
+      artifactName: artifact.artifactName,
+      artifactType: artifact.artifactType,
+      mimeType: artifact.mimeType,
+      fileExtension: artifact.fileExtension,
+      byteSize: artifact.byteSize,
+      storageBucket: artifact.storageBucket,
+      storageKey: artifact.storageKey,
+      sourceChecksum: artifact.sourceChecksum,
+      status: artifact.status,
+      uploadedAt: artifact.uploadedAt,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+    })),
+    references: (evidenceItem.references ?? []).map((reference) => ({
+      id: reference.id,
+      evidenceItemId: reference.evidenceItemId,
+      targetType: reference.targetType,
+      targetEntityId: reference.targetEntityId,
+      relationshipType: reference.relationshipType,
+      rationale: reference.rationale,
+      anchorPath: reference.anchorPath,
+      createdAt: reference.createdAt,
+      updatedAt: reference.updatedAt,
+    })),
+    createdAt: evidenceItem.createdAt,
+    updatedAt: evidenceItem.updatedAt,
+  };
+}
+
 export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
   constructor(database) {
     super();
@@ -27,21 +76,22 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
     if (!(evidenceItem instanceof EvidenceItem)) {
       throw new ValidationError('EvidenceItemRepository.save expects an EvidenceItem aggregate instance');
     }
+    const validatedEvidenceItem = EvidenceItem.rehydrate(toEvidenceItemSnapshot(evidenceItem));
 
     this.database.transaction(() => {
       const existingItem = this.database.get(
         `SELECT * FROM evidence_management_items WHERE id = @id`,
-        { id: evidenceItem.id },
+        { id: validatedEvidenceItem.id },
       );
       if (existingItem) {
-        this.#assertItemIdentityUnchanged(existingItem, evidenceItem);
-        this.#assertVersionIdentityUnchanged(existingItem, evidenceItem);
+        this.#assertItemIdentityUnchanged(existingItem, validatedEvidenceItem);
+        this.#assertVersionIdentityUnchanged(existingItem, validatedEvidenceItem);
       } else {
-        this.#assertValidVersionInsert(evidenceItem);
+        this.#assertValidVersionInsert(validatedEvidenceItem);
       }
 
-      if (evidenceItem.supersededByEvidenceItemId) {
-        this.#assertValidSupersededByLink(evidenceItem);
+      if (validatedEvidenceItem.supersededByEvidenceItemId) {
+        this.#assertValidSupersededByLink(validatedEvidenceItem);
       }
 
       this.database.run(
@@ -68,32 +118,32 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
           review_cycle_id=excluded.review_cycle_id,
           updated_at=excluded.updated_at`,
         {
-          id: evidenceItem.id,
-          institutionId: evidenceItem.institutionId,
-          title: evidenceItem.title,
-          description: evidenceItem.description,
-          evidenceType: evidenceItem.evidenceType,
-          sourceType: evidenceItem.sourceType,
-          status: evidenceItem.status,
-          isComplete: evidenceItem.isComplete ? 1 : 0,
-          evidenceLineageId: evidenceItem.evidenceLineageId,
-          versionNumber: evidenceItem.versionNumber,
-          supersedesEvidenceItemId: evidenceItem.supersedesEvidenceItemId,
-          supersededByEvidenceItemId: evidenceItem.supersededByEvidenceItemId,
-          reportingPeriodId: evidenceItem.reportingPeriodId,
-          reviewCycleId: evidenceItem.reviewCycleId,
-          createdAt: evidenceItem.createdAt,
-          updatedAt: evidenceItem.updatedAt,
+          id: validatedEvidenceItem.id,
+          institutionId: validatedEvidenceItem.institutionId,
+          title: validatedEvidenceItem.title,
+          description: validatedEvidenceItem.description,
+          evidenceType: validatedEvidenceItem.evidenceType,
+          sourceType: validatedEvidenceItem.sourceType,
+          status: validatedEvidenceItem.status,
+          isComplete: validatedEvidenceItem.isComplete ? 1 : 0,
+          evidenceLineageId: validatedEvidenceItem.evidenceLineageId,
+          versionNumber: validatedEvidenceItem.versionNumber,
+          supersedesEvidenceItemId: validatedEvidenceItem.supersedesEvidenceItemId,
+          supersededByEvidenceItemId: validatedEvidenceItem.supersededByEvidenceItemId,
+          reportingPeriodId: validatedEvidenceItem.reportingPeriodId,
+          reviewCycleId: validatedEvidenceItem.reviewCycleId,
+          createdAt: validatedEvidenceItem.createdAt,
+          updatedAt: validatedEvidenceItem.updatedAt,
         },
       );
 
       const persistedArtifacts = this.database.all(
         `SELECT * FROM evidence_management_artifacts WHERE evidence_item_id = @evidenceItemId`,
-        { evidenceItemId: evidenceItem.id },
+        { evidenceItemId: validatedEvidenceItem.id },
       );
       const persistedById = new Map(persistedArtifacts.map((artifact) => [artifact.id, artifact]));
 
-      for (const artifact of evidenceItem.artifacts) {
+      for (const artifact of validatedEvidenceItem.artifacts) {
         const persisted = persistedById.get(artifact.id);
         if (persisted) {
           this.#assertArtifactUnchanged(artifact, persisted);
@@ -127,11 +177,11 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
 
       const persistedReferences = this.database.all(
         `SELECT * FROM evidence_management_references WHERE evidence_item_id = @evidenceItemId`,
-        { evidenceItemId: evidenceItem.id },
+        { evidenceItemId: validatedEvidenceItem.id },
       );
       const persistedReferencesById = new Map(persistedReferences.map((reference) => [reference.id, reference]));
 
-      for (const reference of evidenceItem.references ?? []) {
+      for (const reference of validatedEvidenceItem.references ?? []) {
         const persistedReference = persistedReferencesById.get(reference.id);
         if (persistedReference) {
           this.#assertReferenceUnchanged(reference, persistedReference);
@@ -157,7 +207,7 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
       }
     });
 
-    return evidenceItem;
+    return validatedEvidenceItem;
   }
 
   async getById(id) {
@@ -484,6 +534,9 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
     if (predecessor.version_number + 1 !== evidenceItem.versionNumber) {
       throw new ValidationError('EvidenceItem successor versionNumber must be predecessor.versionNumber + 1');
     }
+    if (predecessor.status !== evidenceStatus.ACTIVE) {
+      throw new ValidationError('EvidenceItem predecessor must be active before creating a successor version');
+    }
 
     const existingSuccessor = this.database.get(
       `SELECT id FROM evidence_management_items WHERE supersedes_evidence_item_id = @supersedesEvidenceItemId`,
@@ -515,14 +568,6 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
       }
       return;
     }
-
-    const isLegacyStandaloneSuccessor =
-      successor.evidence_lineage_id === successor.id &&
-      successor.version_number === 1 &&
-      successor.supersedes_evidence_item_id === null;
-
-    if (!isLegacyStandaloneSuccessor) {
-      throw new ValidationError('EvidenceItem supersededByEvidenceItemId must point to a valid successor evidence item');
-    }
+    throw new ValidationError('EvidenceItem supersededByEvidenceItemId must point to a valid successor evidence item');
   }
 }

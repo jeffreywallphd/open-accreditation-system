@@ -1,7 +1,56 @@
 import { ValidationError } from '../../../shared/kernel/errors.js';
 import { EvidenceItemRepository } from '../../domain/repositories/repositories.js';
 import { EvidenceItem } from '../../domain/entities/evidence-item.js';
+import { evidenceStatus } from '../../domain/value-objects/evidence-classifications.js';
 import { evidenceItemMatchesFilter } from './evidence-item-filtering.js';
+
+function toEvidenceItemSnapshot(evidenceItem) {
+  return {
+    id: evidenceItem.id,
+    institutionId: evidenceItem.institutionId,
+    title: evidenceItem.title,
+    description: evidenceItem.description,
+    evidenceType: evidenceItem.evidenceType,
+    sourceType: evidenceItem.sourceType,
+    status: evidenceItem.status,
+    isComplete: evidenceItem.isComplete,
+    evidenceLineageId: evidenceItem.evidenceLineageId,
+    versionNumber: evidenceItem.versionNumber,
+    supersedesEvidenceItemId: evidenceItem.supersedesEvidenceItemId,
+    supersededByEvidenceItemId: evidenceItem.supersededByEvidenceItemId,
+    reportingPeriodId: evidenceItem.reportingPeriodId,
+    reviewCycleId: evidenceItem.reviewCycleId,
+    artifacts: (evidenceItem.artifacts ?? []).map((artifact) => ({
+      id: artifact.id,
+      evidenceItemId: artifact.evidenceItemId,
+      artifactName: artifact.artifactName,
+      artifactType: artifact.artifactType,
+      mimeType: artifact.mimeType,
+      fileExtension: artifact.fileExtension,
+      byteSize: artifact.byteSize,
+      storageBucket: artifact.storageBucket,
+      storageKey: artifact.storageKey,
+      sourceChecksum: artifact.sourceChecksum,
+      status: artifact.status,
+      uploadedAt: artifact.uploadedAt,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+    })),
+    references: (evidenceItem.references ?? []).map((reference) => ({
+      id: reference.id,
+      evidenceItemId: reference.evidenceItemId,
+      targetType: reference.targetType,
+      targetEntityId: reference.targetEntityId,
+      relationshipType: reference.relationshipType,
+      rationale: reference.rationale,
+      anchorPath: reference.anchorPath,
+      createdAt: reference.createdAt,
+      updatedAt: reference.updatedAt,
+    })),
+    createdAt: evidenceItem.createdAt,
+    updatedAt: evidenceItem.updatedAt,
+  };
+}
 
 export class InMemoryEvidenceItemRepository extends EvidenceItemRepository {
   constructor() {
@@ -13,21 +62,22 @@ export class InMemoryEvidenceItemRepository extends EvidenceItemRepository {
     if (!(evidenceItem instanceof EvidenceItem)) {
       throw new ValidationError('EvidenceItemRepository.save expects an EvidenceItem aggregate instance');
     }
+    const validatedEvidenceItem = EvidenceItem.rehydrate(toEvidenceItemSnapshot(evidenceItem));
 
-    const existing = this.items.get(evidenceItem.id);
+    const existing = this.items.get(validatedEvidenceItem.id);
     if (existing) {
-      this.#assertAppendOnlyArtifacts(existing, evidenceItem);
-      this.#assertAppendOnlyReferences(existing, evidenceItem);
-      this.#assertIdentityFieldsUnchanged(existing, evidenceItem);
-      this.#assertVersionFieldsUnchanged(existing, evidenceItem);
+      this.#assertAppendOnlyArtifacts(existing, validatedEvidenceItem);
+      this.#assertAppendOnlyReferences(existing, validatedEvidenceItem);
+      this.#assertIdentityFieldsUnchanged(existing, validatedEvidenceItem);
+      this.#assertVersionFieldsUnchanged(existing, validatedEvidenceItem);
     } else {
-      this.#assertValidVersionInsert(evidenceItem);
+      this.#assertValidVersionInsert(validatedEvidenceItem);
     }
-    if (evidenceItem.supersededByEvidenceItemId) {
-      this.#assertValidSupersededByLink(evidenceItem);
+    if (validatedEvidenceItem.supersededByEvidenceItemId) {
+      this.#assertValidSupersededByLink(validatedEvidenceItem);
     }
-    const persisted = structuredClone(evidenceItem);
-    this.items.set(evidenceItem.id, persisted);
+    const persisted = structuredClone(toEvidenceItemSnapshot(validatedEvidenceItem));
+    this.items.set(validatedEvidenceItem.id, persisted);
     return EvidenceItem.rehydrate(structuredClone(persisted));
   }
 
@@ -147,6 +197,9 @@ export class InMemoryEvidenceItemRepository extends EvidenceItemRepository {
     if (predecessor.versionNumber + 1 !== evidenceItem.versionNumber) {
       throw new ValidationError('EvidenceItem successor versionNumber must be predecessor.versionNumber + 1');
     }
+    if (predecessor.status !== evidenceStatus.ACTIVE) {
+      throw new ValidationError('EvidenceItem predecessor must be active before creating a successor version');
+    }
     if (predecessor.supersededByEvidenceItemId) {
       throw new ValidationError(`EvidenceItem predecessor already superseded: ${predecessor.id}`);
     }
@@ -176,11 +229,6 @@ export class InMemoryEvidenceItemRepository extends EvidenceItemRepository {
       }
       return;
     }
-
-    const isLegacyStandaloneSuccessor =
-      successor.evidenceLineageId === successor.id && successor.versionNumber === 1 && !successor.supersedesEvidenceItemId;
-    if (!isLegacyStandaloneSuccessor) {
-      throw new ValidationError('EvidenceItem supersededByEvidenceItemId must point to a valid successor evidence item');
-    }
+    throw new ValidationError('EvidenceItem supersededByEvidenceItemId must point to a valid successor evidence item');
   }
 }
