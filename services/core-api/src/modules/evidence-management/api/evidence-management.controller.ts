@@ -5,7 +5,6 @@ import { EVID_SERVICE } from '../evidence-management.module.js';
 import {
   EVIDENCE_ARTIFACT_STATUS_VALUES,
   EVIDENCE_SOURCE_TYPE_VALUES,
-  EVIDENCE_STATUS_VALUES,
   EVIDENCE_TYPE_VALUES,
 } from '../domain/value-objects/evidence-classifications.js';
 import { evidenceLifecycleAction } from '../application/evidence-management-service.js';
@@ -17,8 +16,6 @@ const createEvidenceItemSchema = z.object({
   description: z.string().optional(),
   evidenceType: z.string().refine((value) => EVIDENCE_TYPE_VALUES.includes(value), 'Invalid evidenceType'),
   sourceType: z.string().refine((value) => EVIDENCE_SOURCE_TYPE_VALUES.includes(value), 'Invalid sourceType'),
-  status: z.string().refine((value) => EVIDENCE_STATUS_VALUES.includes(value), 'Invalid status').optional(),
-  isComplete: z.boolean().optional(),
   reportingPeriodId: z.string().optional(),
   reviewCycleId: z.string().optional(),
 });

@@ -23,6 +23,10 @@ export class SqliteEvidenceItemRepository extends EvidenceItemRepository {
   }
 
   async save(evidenceItem) {
+    if (!(evidenceItem instanceof EvidenceItem)) {
+      throw new ValidationError('EvidenceItemRepository.save expects an EvidenceItem aggregate instance');
+    }
+
     this.database.transaction(() => {
       this.database.run(
         `INSERT INTO evidence_management_items

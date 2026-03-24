@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createCoreApiApp } from '../../src/bootstrap/create-core-api-app.js';
 import { EVID_SERVICE } from '../../src/modules/evidence-management/evidence-management.module.js';
 import { ORG_SERVICE } from '../../src/modules/organization-registry/organization-registry.module.js';
+import { ValidationError } from '../../src/modules/shared/kernel/errors.js';
 import { evidenceSourceType, evidenceType } from '../../src/modules/evidence-management/domain/value-objects/evidence-classifications.js';
 
 function createTempDbPath(): string {
@@ -85,6 +86,38 @@ export async function runTests(): Promise<void> {
     assert.equal(restored?.artifacts[1].storageKey, '2026/outcomes-narrative-v2.pdf');
     assert.equal(restored?.usability.isUsable, true);
     assert.equal(restored?.usability.currentArtifactId, restored?.artifacts[1].id);
+
+    await assert.rejects(
+      () =>
+        evidenceService.addEvidenceArtifact(evidenceItemId, {
+          artifactName: 'outcomes-narrative-v3.pdf',
+          artifactType: 'revision',
+          mimeType: 'application/pdf',
+          fileExtension: 'pdf',
+          byteSize: 4096,
+          storageBucket: 'evidence',
+          storageKey: '2026/outcomes-narrative-v3.pdf',
+          sourceChecksum: 'sha256:ghi789',
+        }),
+      ValidationError,
+      'active evidence should remain artifact-immutable after rehydration',
+    );
+
+    await evidenceService.markEvidenceIncomplete(evidenceItemId);
+    const nowIncomplete = await evidenceService.getEvidenceItemById(evidenceItemId);
+    assert.equal(nowIncomplete?.status, 'incomplete');
+
+    await evidenceService.markEvidenceComplete(evidenceItemId);
+    await evidenceService.activateEvidenceItem(evidenceItemId);
+    await evidenceService.archiveEvidenceItem(evidenceItemId);
+
+    const archived = await evidenceService.getEvidenceItemById(evidenceItemId);
+    assert.equal(archived?.status, 'archived');
+    await assert.rejects(
+      () => evidenceService.markEvidenceIncomplete(evidenceItemId),
+      ValidationError,
+      'archived evidence remains terminal after persistence round-trip',
+    );
   } finally {
     await secondApp.close();
   }

@@ -18,6 +18,10 @@ export class InMemoryEvidenceItemRepository extends EvidenceItemRepository {
   }
 
   async save(evidenceItem) {
+    if (!(evidenceItem instanceof EvidenceItem)) {
+      throw new ValidationError('EvidenceItemRepository.save expects an EvidenceItem aggregate instance');
+    }
+
     const existing = this.items.get(evidenceItem.id);
     if (existing) {
       this.#assertAppendOnlyArtifacts(existing, evidenceItem);
